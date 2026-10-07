@@ -39,8 +39,10 @@ llama-server (EmbeddingGemma 2 GGUF)  ──  /v1/embeddings, L2-normalized
   `task: code retrieval | query: <text>`.
 - Vectors are L2-normalized, so **cosine, dot product, and L2 all rank
   identically**; the store uses the cheapest (dot).
-- Output is Matryoshka-truncated to **256 dimensions** by default (near-lossless
-  for code, ~3× smaller than the native 768).
+- Vectors are **stored at the native 768 dimensions** (the model's actual output)
+  and reduced to a **query dimension** (default 256) via the MRL *view*
+  `normalize(v[:d])` at load/search time. Changing the query dimension never
+  requires a reindex — only how many leading dims are read and compared.
 
 ---
 
@@ -67,7 +69,24 @@ cmake --build ~/.local/share/gemma-embedder/llama.cpp/build --target llama-serve
 The resulting binary is
 `~/.local/share/gemma-embedder/llama.cpp/build/bin/llama-server`. A static build
 (`-DBUILD_SHARED_LIBS=OFF`) is recommended so the binary is relocatable and has
-no local `.so` dependencies. Add `-DGGML_CUDA=ON` for a GPU build.
+no local `.so` dependencies.
+
+For a CUDA build (NVIDIA), configure a **separate output directory** and target
+your GPU's compute capability so you only compile one architecture:
+
+```bash
+SRC=~/.local/share/gemma-embedder/llama.cpp
+cmake -S "$SRC" -B "$SRC/build-cuda" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89 \
+      -DCMAKE_CUDA_COMPILER=/opt/cuda/bin/nvcc -DLLAMA_CURL=ON
+cmake --build "$SRC/build-cuda" --target llama-server -j "$(nproc)"
+```
+
+Then point the tool at it with `GEMMA_EMBEDDER_BINARY=$SRC/build-cuda/bin/llama-server`
+(or `--binary`). On an RTX 4070 (sm_89) the CUDA server offloads the whole model
+(~1.1 GB VRAM); for the 270M text backbone the gain is modest (query median
+~19 ms → ~16 ms, best case ~17 ms → ~5 ms), so CPU is a fine default. `gpu_layers`
+defaults to `0`, which lets `llama.cpp` auto-offload everything.
 
 ---
 
@@ -217,7 +236,7 @@ the skill only adds opencode-specific workflow guidance.
 | `semantic_search` | `query`, `k=10`, `path?`, `min_score?`, `granularity?` (`any`/`file`/`symbol`) | Ranked hits: `path`, `start_line`, `end_line`, `score`, `snippet` |
 | `get_context` | `path`, `start_line=1`, `end_line?`, `context_lines=20` | File lines, expanded by context, with `total_lines` |
 | `reindex` | `path?`, `force=false` | Index report (`scanned`, `changed`, `unchanged`, `deleted`, `chunks`, `errors`) |
-| `index_status` | — | `root`, `files`, `chunks`, `vectors`, `dim`, `initialized`, `model`, `last_reindex`, `reindex.watching` |
+| `index_status` | — | `root`, `files`, `chunks`, `vectors`, `native_dim`, `storage_dim`, `query_dim`, `loaded_dim`, `initialized`, `model`, `last_reindex`, `reindex.watching` |
 
 Typical agent flow: `semantic_search` → `get_context` on the best hit. On a
 fresh repo: `index_status` → `reindex` → `semantic_search`.
@@ -230,14 +249,14 @@ Optional `gemma-embedder.toml` at the repo root (all fields have defaults):
 
 ```toml
 [model]
-repo = "ggml-org/embeddinggemma-2-GGUF:Q8_0"  # or :BF16
+repo = "ggml-org/embeddinggemma-2-GGUF:BF16"  # native precision (or :Q8_0)
 binary = ""                 # path to llama-server; empty = search PATH / env
 manage_server = true        # spawn the server automatically
 server_url = "http://127.0.0.1:8080"
 ctx_size = 8192
 gpu_layers = 0              # set 99 for GPU
 normalize = true
-dim = 256                   # MRL truncation: 256 | 512 | 768
+query_dim = 256             # search dim (MRL view of native 768; no reindex needed)
 
 [index]
 roots = ["."]
@@ -304,6 +323,10 @@ Other notes:
 - **Memory** = `n · dim · 4` bytes for vectors (1 GB per million chunks at
   `dim=256`; 3 GB at `dim=768`), plus the precomputed metadata arrays: paths cost
   roughly `max_path_len · n` bytes and granularities ~`6 · n` bytes.
+- **Dimension (`dim`)** affects storage and search cost, not embedding latency:
+  `llama-server` always returns native 768-d vectors and the client truncates.
+  See `reports/mrl-truncation-at-query.md` for the 256-vs-768 and
+  query-time-truncation trade-offs.
 - **`build`/reload** rebuilds the whole snapshot (vectors + metadata + `vstack`)
   and is paid on every reindex; constructing the metadata arrays adds some cost
   especially at 1M chunks.

@@ -156,13 +156,48 @@ class SQLiteStore:
             self.conn.execute("DELETE FROM files WHERE path = ?", (rel,))
 
     # -- loading ------------------------------------------------------------
-    def load_records(self) -> list[dict[str, Any]]:
-        """Load every chunk with its vector for building the search snapshot."""
+    def stored_dim(self) -> int | None:
+        """The dimension the vectors are persisted at (index fact).
+
+        Prefers the explicit ``storage_dim`` meta; falls back to the legacy
+        ``dim`` key, then to the per-row ``embeddings.dim`` column.
+        """
+        meta = self.get_meta("storage_dim") or self.get_meta("dim")
+        if meta is not None:
+            return int(meta)
+        row = self.conn.execute("SELECT dim FROM embeddings LIMIT 1").fetchone()
+        return int(row["dim"]) if row else None
+
+    def _assert_single_storage_dim(self) -> None:
+        rows = self.conn.execute("SELECT DISTINCT dim FROM embeddings LIMIT 2").fetchall()
+        if len(rows) > 1:
+            raise RuntimeError(
+                "index contains mixed embedding dimensions; run an explicit "
+                "reindex (index --force / reindex(force=true)) to rebuild it"
+            )
+
+    def load_records(self, dim: int | None = None) -> list[dict[str, Any]]:
+        """Load chunks with vectors for the search snapshot.
+
+        If ``dim`` is given, only the leading ``dim`` float32 values of each
+        stored vector are read out of SQLite (``substr``), so a smaller query
+        dimension never materializes the full native vector. Vectors are returned
+        **raw** (not normalized); the caller applies the MRL view.
+        """
+        self._assert_single_storage_dim()
+        if dim is None:
+            vector_expr = "e.vector"
+            params: tuple = ()
+        else:
+            vector_expr = "substr(e.vector, 1, ?)"
+            params = (dim * 4,)
         rows = self.conn.execute(
             "SELECT c.id AS chunk_id, f.path AS path, c.granularity, c.symbol, "
-            "c.kind, c.language, c.start_line, c.end_line, c.content, e.vector "
+            "c.kind, c.language, c.start_line, c.end_line, c.content, "
+            f"{vector_expr} AS vector "
             "FROM chunks c JOIN files f ON f.id = c.file_id "
-            "JOIN embeddings e ON e.chunk_id = c.id"
+            "JOIN embeddings e ON e.chunk_id = c.id",
+            params,
         ).fetchall()
         records: list[dict[str, Any]] = []
         for row in rows:

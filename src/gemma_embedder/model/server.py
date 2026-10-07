@@ -23,7 +23,7 @@ from typing import Self
 #: OpenAI-compatible endpoint the server should expose.
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8080
-DEFAULT_MODEL_REPO = "ggml-org/embeddinggemma-2-GGUF:Q8_0"
+DEFAULT_MODEL_REPO = "ggml-org/embeddinggemma-2-GGUF:BF16"
 
 INSTALL_HINT = "curl -LsSf https://llama.app/install.sh | sh"
 
@@ -81,6 +81,7 @@ def build_command(
         "-hf",
         model_repo,
         "--embeddings",
+        "--no-mmproj",  # text-only: don't fetch/load the vision projector
         "--pooling",
         "mean",
         "--embd-normalize",

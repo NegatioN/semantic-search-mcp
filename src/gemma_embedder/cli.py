@@ -134,7 +134,11 @@ def _print_status(status: RuntimeStatus) -> None:
     print(f"root          : {status.root}")
     print(f"files         : {status.files}")
     print(f"chunks        : {status.chunks}")
-    print(f"vectors       : {status.vectors} (dim {status.dim})")
+    print(f"vectors       : {status.vectors}")
+    print(
+        f"dimensions    : native={status.native_dim} storage={status.storage_dim} "
+        f"query={status.query_dim} loaded={status.loaded_dim}"
+    )
     print(f"model         : {status.model_repo}")
     print(f"server        : {status.server_url} (managed={status.server_managed})")
     print(
@@ -163,7 +167,7 @@ def _cmd_bench(args: argparse.Namespace) -> int:
     from .bench import cpu_summary, format_table, run_bench
 
     cfg = _load_config(args)
-    dim = args.dim or cfg.model.dim
+    dim = args.dim or cfg.model.query_dim
     sizes = [int(s) for s in args.sizes.replace(" ", "").split(",") if s]
     cpu = cpu_summary()
     rows = run_bench(sizes, dim, repeats=args.repeats, k=args.k)

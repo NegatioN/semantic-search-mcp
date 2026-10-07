@@ -6,10 +6,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from gemma_embedder.model.client import (
-    EmbeddingClient,
     cosine,
     dot,
     l2_normalize,
+    view,
 )
 from gemma_embedder.probe import parse_host_port
 
@@ -27,17 +27,19 @@ class TestVectorMath(unittest.TestCase):
         b = l2_normalize([3.0, 1.0, 0.0])
         self.assertAlmostEqual(dot(a, b), cosine(a, b), places=9)
 
-    def test_truncate_then_renormalize(self):
-        client = EmbeddingClient("http://unused", normalize=True, dim=2)
-        out = client._postprocess([3.0, 4.0, 99.0])
+    def test_view_truncates_then_renormalizes(self):
+        out = view([3.0, 4.0, 99.0], 2)
         self.assertEqual(len(out), 2)
         self.assertAlmostEqual(out[0], 0.6)
         self.assertAlmostEqual(out[1], 0.8)
 
-    def test_no_truncation_native_dim(self):
-        client = EmbeddingClient("http://unused", normalize=False)
-        vec = [0.1] * 768
-        self.assertEqual(client._postprocess(vec), vec)
+    def test_view_at_native_equals_normalize(self):
+        v = [0.1] * 768
+        self.assertEqual(view(v, 768), l2_normalize(v))
+
+    def test_view_dim_too_large(self):
+        with self.assertRaises(ValueError):
+            view([1.0, 2.0], 3)
 
 
 class TestHostPortParsing(unittest.TestCase):

@@ -18,7 +18,7 @@ from .index.indexer import Indexer, IndexReport
 from .index.store import SQLiteStore
 from .index.vectors import NumpyVectorStore, SearchHit
 from .index.watcher import ReindexScheduler
-from .model.client import EmbeddingClient
+from .model.client import NATIVE_DIM, EmbeddingClient, view
 from .model.prefixes import format_query
 from .model.server import INSTALL_HINT, ServerManager, find_binary, parse_host_port
 
@@ -33,7 +33,10 @@ class RuntimeStatus:
     files: int
     chunks: int
     vectors: int
-    dim: int | None
+    native_dim: int
+    storage_dim: int | None
+    query_dim: int
+    loaded_dim: int | None
     model_repo: str
     server_url: str
     server_managed: bool
@@ -49,7 +52,13 @@ class RuntimeStatus:
             "files": self.files,
             "chunks": self.chunks,
             "vectors": self.vectors,
-            "dim": self.dim,
+            # native = model output; storage = on-disk index fact; query = view
+            # used for search; loaded = dim actually in the in-memory snapshot.
+            "native_dim": self.native_dim,
+            "storage_dim": self.storage_dim,
+            "query_dim": self.query_dim,
+            "loaded_dim": self.loaded_dim,
+            "dim": self.loaded_dim,  # back-compat alias
             "initialized": self.initialized,
             "model": {
                 "repo": self.model_repo,
@@ -112,7 +121,6 @@ class Runtime:
                 base_url,
                 api_key=mc.api_key or None,
                 normalize=mc.normalize,
-                dim=mc.dim or None,
             )
             if not client.health():
                 raise RuntimeError_(f"embeddings server not healthy at {base_url}")
@@ -136,27 +144,17 @@ class Runtime:
         self.close()
 
     # -- index --------------------------------------------------------------
-    def _check_model_meta(self, store: SQLiteStore) -> bool:
-        """Return True if the stored index matches the current model settings."""
+    def _model_matches(self, store: SQLiteStore) -> bool:
+        """True if the stored embeddings were produced by the same model/settings.
+
+        This intentionally ignores the query dimension — that is a view, not a
+        property of the stored vectors.
+        """
         mc = self.config.model
         stored_repo = store.get_meta("model_repo")
-        stored_dim = store.get_meta("dim")
-        stored_norm = store.get_meta("normalize")
-        current = {
-            "model_repo": mc.repo,
-            "dim": str(mc.dim),
-            "normalize": str(mc.normalize).lower(),
-        }
         if stored_repo is None:
-            for key, value in current.items():
-                store.set_meta(key, value)
-            return True
-        compatible = (
-            stored_repo == current["model_repo"]
-            and stored_dim == current["dim"]
-            and stored_norm == current["normalize"]
-        )
-        return compatible
+            return True  # fresh index
+        return stored_repo == mc.repo and (store.get_meta("normalize") == str(mc.normalize).lower())
 
     def index(
         self,
@@ -168,14 +166,19 @@ class Runtime:
         with self._lock:
             store = self.open_store()
             client = self.start_model()
-            if not self._check_model_meta(store) and not force:
+            mc = self.config.model
+            if not force and not self._model_matches(store):
+                force = True
+            stored_dim = store.stored_dim()
+            if not force and stored_dim is not None and stored_dim != NATIVE_DIM:
+                # Legacy/compact index: upgrade storage to native so all rows agree.
                 force = True
             indexer = Indexer(self.config.root, self.config.index, client, store)
             report = indexer.index(subpath=subpath, force=force, progress=progress)
-            mc = self.config.model
             store.set_meta("model_repo", mc.repo)
-            store.set_meta("dim", str(mc.dim))
             store.set_meta("normalize", str(mc.normalize).lower())
+            store.set_meta("native_dim", str(NATIVE_DIM))
+            store.set_meta("storage_dim", str(NATIVE_DIM))
             store.set_meta("initialized", "true")
             store.set_meta("last_reindex", datetime.now(UTC).isoformat())
             self.reload()
@@ -190,14 +193,28 @@ class Runtime:
         return store.stats()["files"] > 0
 
     def reload(self) -> None:
-        """Rebuild the in-memory search snapshot from the store.
+        """Rebuild the in-memory search snapshot at the configured query dimension.
 
-        A fresh :class:`NumpyVectorStore` is built and then assigned atomically,
-        so concurrent readers always see a consistent snapshot.
+        Only the leading ``query_dim`` floats of each stored vector are read from
+        SQLite and then re-normalized (the MRL view), so the snapshot is
+        ``(n, query_dim)`` regardless of native storage. A fresh store is built and
+        assigned atomically, so concurrent readers always see a consistent snapshot.
         """
         with self._lock:
             store = self.open_store()
-            records = store.load_records()
+            query_dim = int(self.config.model.query_dim)
+            if query_dim < 1 or query_dim > NATIVE_DIM:
+                raise RuntimeError_(f"query_dim must be in 1..{NATIVE_DIM}, got {query_dim}")
+            stored_dim = store.stored_dim()
+            if stored_dim is not None and query_dim > stored_dim:
+                raise RuntimeError_(
+                    f"query_dim {query_dim} exceeds stored index dimension {stored_dim}; "
+                    f"rebuild at native {NATIVE_DIM} with `gemma-embedder index --force` "
+                    "(or the reindex tool with force=true)"
+                )
+            records = store.load_records(dim=query_dim)
+            for record in records:
+                record["vector"] = view(record["vector"], query_dim)
             snapshot = NumpyVectorStore(snippet_chars=self.config.index.snippet_chars)
             snapshot.build(records)
             self.vector = snapshot
@@ -245,7 +262,7 @@ class Runtime:
         # Grab an immutable snapshot so searches are never blocked by reindexing.
         snapshot = self.vector
         client = self.start_model()
-        query_vector = client.embed_one(format_query(query))
+        query_vector = view(client.embed_one(format_query(query)), int(self.config.model.query_dim))
         return snapshot.search(
             query_vector,
             k=k,
@@ -265,7 +282,10 @@ class Runtime:
                 files=stats["files"],
                 chunks=stats["chunks"],
                 vectors=self.vector.size,
-                dim=self.vector.dim,
+                native_dim=NATIVE_DIM,
+                storage_dim=store.stored_dim(),
+                query_dim=int(mc.query_dim),
+                loaded_dim=self.vector.dim,
                 model_repo=store.get_meta("model_repo") or mc.repo,
                 server_url=mc.server_url,
                 server_managed=mc.manage_server,

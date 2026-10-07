@@ -193,7 +193,6 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--binary", default=None, help="path to llama/llama-server binary")
     parser.add_argument("--model-repo", default=DEFAULT_MODEL_REPO)
     parser.add_argument("--gpu-layers", type=int, default=0)
-    parser.add_argument("--dim", type=int, default=0, help="MRL truncation (0 = native 768)")
     parser.add_argument(
         "--no-spawn",
         action="store_true",
@@ -224,7 +223,7 @@ def run_args(args: argparse.Namespace) -> int:
         print(f"Server ready at {server_url}")
 
     try:
-        client = EmbeddingClient(server_url, dim=args.dim or None)
+        client = EmbeddingClient(server_url)
         if not client.health():
             print(f"ERROR: embeddings server is not healthy at {server_url}.")
             if not binary:

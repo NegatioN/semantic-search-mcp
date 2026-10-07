@@ -12,7 +12,7 @@ docs, Qdrant MRL/quantization post), and producing an implementation plan.
 ## Recommended stack
 
 ```
-llama.cpp llama-server + embeddinggemma-2-GGUF (Q8_0, ~310MB)
+llama.cpp llama-server + embeddinggemma-2-GGUF (BF16, ~558MB)
    → POST /v1/embeddings  (L2-normalized, 768d)
 Python 3.12/3.13 (uv) + FastMCP (stdio)
    ├─ watchdog + periodic mtime/hash reconciliation
@@ -30,7 +30,7 @@ Python 3.12/3.13 (uv) + FastMCP (stdio)
 Use `llama-server` with the GGUF repo — it auto-downloads and caches:
 
 ```bash
-llama serve -hf ggml-org/embeddinggemma-2-GGUF:Q8_0 \
+llama serve -hf ggml-org/embeddinggemma-2-GGUF:BF16 \
   --embeddings --pooling mean --embd-normalize 2 \
   --ctx-size 8192 --host 127.0.0.1 --port 8080
 # add --n-gpu-layers 99 if GPU; CPU is fine (270M text backbone)
@@ -98,15 +98,19 @@ EmbeddingGemma 2 is trained with task-instruction prefixes. Use the exact string
 ## Similarity / storage notes
 
 - All vectors are L2-normalized ⇒ **cosine == dot == L2 ranking** (use dot, it's
-  cheapest). Use the server's `--embd-normalize 2`.
-- MRL dimension truncation (768 → 512/256/128) reduces storage; **256d is
-  near-lossless for code**, 128d degrades multimodal quality. **Re-normalize
-  after truncation.**
+  cheapest). Use the server's `--embd-normalize 2`. **Normalization is
+  load-bearing**: dot product on raw, unnormalized vectors ranks by magnitude
+  (see `reports/unnormalized-dot-vs-cosine.md`).
+- Vectors are **stored native (768)**; a **query dimension** (`query_dim`,
+  default 256) is an MRL *view* `normalize(v[:d])` applied at load/query time.
+  **256d is near-lossless for code**; changing `query_dim` never reindexes.
+  **Re-normalize after truncation.**
 - Exact numpy brute force is plenty for typical local repos (a few hundred
   thousand chunks); only reach for ANN (sqlite-vec/HNSW) when measured to be
   needed.
-- Store the model id + dim + normalization mode in an index `meta` table; a
-  mismatch must force a full reindex (embedding spaces are incompatible).
+- Store the model id + native/storage dim + normalization mode in an index
+  `meta` table; a **model/normalization** mismatch forces a full reindex
+  (embedding spaces are incompatible). The query dim is a view, not a fact.
 
 ---
 
@@ -245,7 +249,7 @@ Tools exposed: `semantic_search`, `get_context`, `reindex`, `index_status`.
 - `index/store.py` — SQLite (WAL) with `files` / `chunks` / `embeddings` / `meta`;
   float32 vector blobs; sha256 per file for incremental updates.
 - `index/vectors.py` — immutable NumPy snapshot, exact dot-product search
-  (vectors L2-normalized, dim=256 via MRL).
+  (vectors stored native 768, L2-normalized, viewed at `query_dim=256` via MRL).
 - `runtime.py` — shared wiring used by CLI and MCP.
 - `mcp/server.py` — official MCP SDK v2 `MCPServer`, stdio transport.
 

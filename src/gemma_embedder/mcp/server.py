@@ -14,12 +14,15 @@ from .. import __version__
 from ..runtime import Runtime
 
 INSTRUCTIONS = (
-    "Semantic code search over a locally indexed workspace using "
-    "EmbeddingGemma 2. New repositories are NOT indexed automatically. Check "
-    "`index_status`; if `initialized` is false, call `reindex` (optionally with "
-    "a path) to build the index before searching. Then use `semantic_search` to "
-    "find relevant code by meaning and `get_context` to expand a hit into "
-    "surrounding lines."
+    "Semantic code search over a locally indexed workspace using EmbeddingGemma 2. "
+    "Use it FIRST for broad or vague questions whose mapping onto the code is "
+    "unclear — it surfaces candidate files and, importantly, the codebase's own "
+    "vocabulary (internal names that don't appear in the question), which you then "
+    "feed into a normal grep/read. One or two `semantic_search` calls plus "
+    "`get_context` usually suffice. New repositories are NOT indexed automatically: "
+    "if `index_status` reports `initialized` false, ASK THE USER before calling "
+    "`reindex`. Fall back to grep/read when you already know a concrete symbol, "
+    "file, or exact string."
 )
 
 

@@ -47,14 +47,16 @@ DEFAULT_EXCLUDES = [
 @dataclass
 class ModelConfig:
     backend: str = "llama-server"
-    repo: str = "ggml-org/embeddinggemma-2-GGUF:Q8_0"
+    repo: str = "ggml-org/embeddinggemma-2-GGUF:BF16"
     binary: str = ""
     manage_server: bool = True
     server_url: str = "http://127.0.0.1:8080"
     ctx_size: int = 8192
     gpu_layers: int = 0
     normalize: bool = True
-    dim: int = 256
+    #: Search/query dimension (an MRL "view" of the native 768-d vectors). Stored
+    #: vectors are always native; changing this never requires a reindex.
+    query_dim: int = 256
     api_key: str = ""
     startup_timeout: float = 600.0
 
@@ -142,7 +144,11 @@ def load(path: Path | str | None = None, root: Path | str | None = None) -> Conf
 
     config = Config(root=root_path)
     if "model" in data:
-        config.model = _build(ModelConfig, _section(data, "model"))
+        model_section = _section(data, "model")
+        # Back-compat: the old `dim` key now means the query/view dimension.
+        if "query_dim" not in model_section and "dim" in model_section:
+            model_section = {**model_section, "query_dim": model_section["dim"]}
+        config.model = _build(ModelConfig, model_section)
     if "index" in data:
         config.index = _build(IndexConfig, _section(data, "index"))
     if "store" in data:

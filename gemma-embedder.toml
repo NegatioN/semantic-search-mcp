@@ -1,13 +1,15 @@
 [model]
 backend = "llama-server"
-repo = "ggml-org/embeddinggemma-2-GGUF:Q8_0"
+repo = "ggml-org/embeddinggemma-2-GGUF:BF16"
 binary = ""                 # path to llama-server; empty = search PATH
 manage_server = true
 server_url = "http://127.0.0.1:8080"
 ctx_size = 8192
 gpu_layers = 0
 normalize = true
-dim = 256
+# Query/search dimension (MRL view of the native 768-d vectors). Vectors are
+# always stored native (768); changing this never requires a reindex.
+query_dim = 256
 startup_timeout = 600.0
 
 [index]

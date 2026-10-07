@@ -31,6 +31,18 @@ def l2_normalize(vector: Sequence[float]) -> list[float]:
     return [x / norm for x in vector]
 
 
+def view(vector: Sequence[float], dim: int) -> list[float]:
+    """The single MRL view: keep the leading ``dim`` dims, then re-normalize.
+
+    This is the pure function applied at every boundary (query embedding and
+    loading stored vectors at the query dimension). Normalization is *after*
+    slicing — ``normalize(v)[:d] != normalize(v[:d])``.
+    """
+    if dim > len(vector):
+        raise ValueError(f"view dim {dim} exceeds vector length {len(vector)}")
+    return l2_normalize(vector[:dim])
+
+
 def dot(a: Sequence[float], b: Sequence[float]) -> float:
     """Dot product of two equal-length vectors."""
     return sum(x * y for x, y in zip(a, b))
@@ -59,7 +71,12 @@ class WarmupReport:
 
 
 class EmbeddingClient:
-    """Minimal JSON-over-HTTP client for llama-server embeddings."""
+    """Minimal JSON-over-HTTP client for llama-server embeddings.
+
+    Returns **native, unit-normalized** vectors (dimension ``NATIVE_DIM``). It
+    does not truncate; dimension reduction is the :func:`view` concern, applied
+    by callers at the query/load boundary.
+    """
 
     def __init__(
         self,
@@ -69,16 +86,12 @@ class EmbeddingClient:
         api_key: str | None = None,
         timeout: float = 120.0,
         normalize: bool = True,
-        dim: int | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key
         self.timeout = timeout
         self.normalize = normalize
-        self.dim = dim
-        if dim is not None and dim > NATIVE_DIM:
-            raise ValueError(f"dim must be <= {NATIVE_DIM}, got {dim}")
 
     # -- server lifecycle helpers -------------------------------------------
     def health(self) -> bool:
@@ -118,18 +131,12 @@ class EmbeddingClient:
 
         ordered = sorted(data, key=lambda item: item.get("index", 0))
         vectors = [item["embedding"] for item in ordered]
-        return [self._postprocess(v) for v in vectors]
+        if self.normalize:
+            return [l2_normalize(v) for v in vectors]
+        return vectors
 
     def embed_one(self, text: str) -> list[float]:
         return self.embed([text])[0]
-
-    def _postprocess(self, vector: list[float]) -> list[float]:
-        """Apply optional MRL truncation (then re-normalize) and L2 norm."""
-        if self.dim is not None:
-            vector = vector[: self.dim]
-        if self.normalize:
-            vector = l2_normalize(vector)
-        return vector
 
     def warmup(self, probe: str = "warmup") -> WarmupReport:
         """Verify dim, unit norm and determinism by embedding a probe twice."""
