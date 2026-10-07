@@ -13,9 +13,12 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+from typing import Self
 
 #: OpenAI-compatible endpoint the server should expose.
 DEFAULT_HOST = "127.0.0.1"
@@ -52,6 +55,12 @@ def find_free_port() -> int:
         return sock.getsockname()[1]
 
 
+def parse_host_port(url: str) -> tuple[str, int]:
+    """Split a base URL into ``(host, port)`` with sane defaults."""
+    parsed = urllib.parse.urlparse(url)
+    return parsed.hostname or DEFAULT_HOST, parsed.port or DEFAULT_PORT
+
+
 def build_command(
     binary: str,
     *,
@@ -69,15 +78,23 @@ def build_command(
     if os.path.basename(binary) == "llama":
         cmd.append("serve")
     cmd += [
-        "-hf", model_repo,
+        "-hf",
+        model_repo,
         "--embeddings",
-        "--pooling", "mean",
-        "--embd-normalize", "2",
-        "--ctx-size", str(ctx_size),
-        "--batch-size", str(batch_size or ctx_size),
-        "--ubatch-size", str(ubatch_size or ctx_size),
-        "--host", host,
-        "--port", str(port),
+        "--pooling",
+        "mean",
+        "--embd-normalize",
+        "2",
+        "--ctx-size",
+        str(ctx_size),
+        "--batch-size",
+        str(batch_size or ctx_size),
+        "--ubatch-size",
+        str(ubatch_size or ctx_size),
+        "--host",
+        host,
+        "--port",
+        str(port),
     ]
     if gpu_layers:
         cmd += ["--n-gpu-layers", str(gpu_layers)]
@@ -132,12 +149,17 @@ class ServerManager:
             ctx_size=self.ctx_size,
             gpu_layers=self.gpu_layers,
         )
-        self.process = subprocess.Popen(cmd)
+        self.process = subprocess.Popen(
+            cmd,
+            stdout=sys.stderr,
+            stderr=sys.stderr,
+        )
         if not self.wait_healthy():
             exit_code = self.process.poll()
             self.stop()
             detail = (
-                f"process exited with code {exit_code}" if exit_code is not None
+                f"process exited with code {exit_code}"
+                if exit_code is not None
                 else f"no healthy response within {self.health_timeout}s"
             )
             raise RuntimeError(f"embeddings server failed to start: {detail}")
@@ -170,7 +192,7 @@ class ServerManager:
         finally:
             self.process = None
 
-    def __enter__(self) -> "ServerManager":
+    def __enter__(self) -> Self:
         self.start()
         return self
 

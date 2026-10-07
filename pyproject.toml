@@ -4,10 +4,14 @@ version = "0.0.1"
 description = "Local semantic code search with EmbeddingGemma 2 via llama.cpp, exposed as an MCP server"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "numpy>=1.26",
+    "pathspec>=0.12",
+    "watchdog>=4",
+    "mcp>=1.9",
+]
 
 [project.optional-dependencies]
-index = ["numpy", "watchdog", "pathspec"]
 symbols = ["tree-sitter", "tree-sitter-language-pack"]
 dev = ["pytest", "ruff", "mypy"]
 

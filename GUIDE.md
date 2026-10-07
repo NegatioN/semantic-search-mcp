@@ -189,3 +189,76 @@ plenty for the 270M text backbone.
 files. `build_command()` now passes `--batch-size`/`--ubatch-size` equal to
 `--ctx-size` (8192). Real symbol-level chunking (Phase 3) keeps chunks ≤1024
 tokens anyway.
+
+---
+
+## Phase 1 status (implemented)
+
+Whole-file index + exact NumPy search, exposed through both a CLI and an MCP
+server over stdio.
+
+### Setup
+
+```bash
+uv venv --python 3.12 .venv
+uv pip install --python .venv/bin/python -e ".[dev]"
+```
+
+### CLI
+
+```bash
+BIN=/path/to/llama-server          # source-built (see above)
+.venv/bin/gemma-embedder index  --root . --binary "$BIN"
+.venv/bin/gemma-embedder search "how are embeddings stored and loaded" -k 5 --root . --binary "$BIN"
+.venv/bin/gemma-embedder status --root .
+.venv/bin/gemma-embedder serve  --root . --binary "$BIN"   # MCP over stdio
+```
+
+`--binary` can be omitted by setting `binary` in `gemma-embedder.toml` or the
+`GEMMA_EMBEDDER_BINARY` env var. Use `--no-spawn` to target an external server.
+
+### MCP configuration
+
+```json
+{
+  "mcp": {
+    "gemma-embedder": {
+      "type": "local",
+      "command": [
+        "/abs/path/.venv/bin/gemma-embedder", "serve",
+        "--root", "/abs/path",
+        "--binary", "/abs/path/to/llama-server"
+      ],
+      "enabled": true
+    }
+  }
+}
+```
+
+Tools exposed: `semantic_search`, `get_context`, `reindex`, `index_status`.
+
+### Architecture (Phase 1)
+
+- `index/walker.py` — gitignore-aware discovery (pathspec), binary/size pruning.
+- `chunking/file.py` — whole-file chunks; line-aligned sliding window
+  (6000 chars, 600 overlap) for oversized files.
+- `index/store.py` — SQLite (WAL) with `files` / `chunks` / `embeddings` / `meta`;
+  float32 vector blobs; sha256 per file for incremental updates.
+- `index/vectors.py` — immutable NumPy snapshot, exact dot-product search
+  (vectors L2-normalized, dim=256 via MRL).
+- `runtime.py` — shared wiring used by CLI and MCP.
+- `mcp/server.py` — official MCP SDK v2 `MCPServer`, stdio transport.
+
+### Verified
+
+- Unit tests: `30 passed`.
+- End-to-end: 35 files → 40 chunks; incremental re-index 0.02s (0 changed).
+- MCP stdio round-trip: all four tools return correct results; `reindex`
+  detects changed files after edits.
+
+### Known limitation (Phase 3 target)
+
+Very short files (e.g. package `__init__.py` docstrings) can rank highly for
+project-name queries because a whole-file embedding is dominated by the
+`title:` path. Symbol-level chunking plus a minimum-chunk-size filter will
+address this.

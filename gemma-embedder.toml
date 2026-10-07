@@ -1,0 +1,32 @@
+[model]
+backend = "llama-server"
+repo = "ggml-org/embeddinggemma-2-GGUF:Q8_0"
+binary = ""                 # path to llama-server; empty = search PATH
+manage_server = true
+server_url = "http://127.0.0.1:8080"
+ctx_size = 8192
+gpu_layers = 0
+normalize = true
+dim = 256
+startup_timeout = 600.0
+
+[index]
+roots = ["."]
+respect_gitignore = true
+max_file_bytes = 1000000
+chunk = "file"
+max_chunk_chars = 6000
+overlap_chars = 600
+snippet_chars = 1600
+
+[store]
+path = ".gemma-embedder/index.db"
+backend = "numpy"
+
+[reindex]
+index_on_start = true
+interval_seconds = 300
+debounce_seconds = 2.0
+
+[server]
+transport = "stdio"

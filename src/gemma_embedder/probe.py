@@ -12,19 +12,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .model.client import EmbeddingClient, WarmupReport, dot
 from .model.prefixes import format_document, format_query
 from .model.server import (
-    DEFAULT_HOST,
     DEFAULT_MODEL_REPO,
-    DEFAULT_PORT,
     INSTALL_HINT,
     ServerManager,
     find_binary,
+    parse_host_port,
 )
 
 DEFAULT_EXTENSIONS = (".py", ".md", ".toml", ".txt", ".rs", ".ts", ".js", ".go")
@@ -92,11 +90,6 @@ def iter_text_files(
     return files
 
 
-def parse_host_port(url: str) -> tuple[str, int]:
-    parsed = urllib.parse.urlparse(url)
-    return parsed.hostname or DEFAULT_HOST, parsed.port or DEFAULT_PORT
-
-
 def run_probe(
     client: EmbeddingClient,
     root: Path,
@@ -135,11 +128,7 @@ def run_probe(
             reverse=True,
         )
         top = scored[:top_k]
-        passed = (
-            bool(top)
-            and expected is not None
-            and any(hint in top[0][0] for hint in expected)
-        )
+        passed = bool(top) and expected is not None and any(hint in top[0][0] for hint in expected)
         outcomes.append(QueryOutcome(query, expected, top, passed))
 
     return ProbeResult(warmup=warmup, root=str(root), files=kept, outcomes=outcomes)
@@ -248,9 +237,7 @@ def run_args(args: argparse.Namespace) -> int:
                 print("Or point --server-url at an already-running server.")
             return 2
 
-        queries = (
-            [(q, None) for q in args.query] if args.query else list(DEFAULT_QUERIES)
-        )
+        queries = [(q, None) for q in args.query] if args.query else list(DEFAULT_QUERIES)
         result = run_probe(
             client,
             args.root,

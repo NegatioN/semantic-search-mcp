@@ -11,8 +11,8 @@ import json
 import math
 import urllib.error
 import urllib.request
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 DEFAULT_MODEL = "embeddinggemma-2"
 #: Native EmbeddingGemma 2 output dimension.
@@ -55,11 +55,7 @@ class WarmupReport:
 
     @property
     def ok(self) -> bool:
-        return (
-            self.dim == NATIVE_DIM
-            and abs(self.norm - 1.0) < 1e-3
-            and self.deterministic
-        )
+        return self.dim == NATIVE_DIM and abs(self.norm - 1.0) < 1e-3 and self.deterministic
 
 
 class EmbeddingClient:
