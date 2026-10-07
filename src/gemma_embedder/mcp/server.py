@@ -15,9 +15,11 @@ from ..runtime import Runtime
 
 INSTRUCTIONS = (
     "Semantic code search over a locally indexed workspace using "
-    "EmbeddingGemma 2. Use `semantic_search` to find relevant code by meaning, "
-    "`get_context` to expand a hit into surrounding lines, `reindex` to refresh "
-    "the index, and `index_status` to inspect state."
+    "EmbeddingGemma 2. New repositories are NOT indexed automatically. Check "
+    "`index_status`; if `initialized` is false, call `reindex` (optionally with "
+    "a path) to build the index before searching. Then use `semantic_search` to "
+    "find relevant code by meaning and `get_context` to expand a hit into "
+    "surrounding lines."
 )
 
 
@@ -76,7 +78,8 @@ def build_server(runtime: Runtime) -> MCPServer:
 
     @server.tool(
         description=(
-            "Re-index the workspace (or a subpath). Incremental by default; "
+            "Build or update the index for this workspace. Call once to "
+            "initialize a repo before searching; incremental by default, "
             "set force=true to re-embed everything."
         )
     )

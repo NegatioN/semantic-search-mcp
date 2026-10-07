@@ -278,15 +278,24 @@ Live re-indexing while the MCP server runs.
   mutations never overlap.
 - `serve` starts the watcher automatically (config `reindex.watch`); the new
   `watch` command runs a headless indexing daemon.
+- **Initialization is explicit.** `serve` never builds a first index for a repo;
+  it only *refreshes* an index that already exists (`reindex.update_on_start`).
+  A repo that was never indexed waits for an explicit `reindex`/`index` call —
+  this avoids accidentally embedding a huge repo just by opening it. The watcher
+  likewise ignores repos that are not yet initialized, so it starts contributing
+  only after the first explicit index.
 - Reads are lock-free: `search` grabs an immutable `NumpyVectorStore` snapshot;
   a reindex builds a fresh snapshot and assigns it atomically, so queries are
   never blocked by indexing.
+- `index_status` reports `initialized` so a client can tell whether an explicit
+  `reindex` is needed.
 
 ### Config
 
 ```toml
 [reindex]
-index_on_start = true
+# refresh an already-initialized index at startup (never auto-creates one)
+update_on_start = true
 watch = true
 interval_seconds = 300
 debounce_seconds = 2.0
@@ -295,15 +304,60 @@ debounce_seconds = 2.0
 ### Usage
 
 ```bash
-gemma-embedder watch --root . --binary "$BIN"          # headless daemon
-gemma-embedder watch --root . --no-initial             # skip initial pass
-gemma-embedder serve --root . --binary "$BIN"          # MCP + watcher
+gemma-embedder index  --root . --binary "$BIN"         # explicit first index
+gemma-embedder watch  --root . --binary "$BIN"         # explicit daemon (indexes)
+gemma-embedder watch  --root . --no-initial            # only update if inited
+gemma-embedder serve  --root . --binary "$BIN"         # MCP + watcher (no auto-init)
 ```
 
 ### Verified
 
 - Unit tests: `37 passed` (adds watcher debounce/periodic/ignore tests).
 - Live MCP test: an edit becomes searchable within the debounce window; a
-  deleted file disappears from the index; restarting with `index_on_start=false`
+  deleted file disappears from the index; restarting with `update_on_start=false`
   preserves state (`last_reindex` unchanged, no full reindex) with the watcher
   still active.
+
+---
+
+## Using with opencode
+
+Registered globally in `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "mcp": {
+    "gemma-embedder": {
+      "type": "local",
+      "command": [
+        "/home/joakim/projects/gemma-embedder/.venv/bin/gemma-embedder",
+        "serve",
+        "--root",
+        "."
+      ],
+      "cwd": ".",
+      "environment": {
+        "GEMMA_EMBEDDER_BINARY": "/home/joakim/.local/share/gemma-embedder/llama.cpp-master/build-static/bin/llama-server"
+      },
+      "enabled": true,
+      "timeout": 120000
+    }
+  }
+}
+```
+
+- `cwd: "."` plus `--root .` means the server indexes whatever workspace
+  opencode is opened in — the same global entry works for any repo.
+- `GEMMA_EMBEDDER_BINARY` points at a **static** llama-server build (no local
+  `.so` dependencies) under `~/.local/share/gemma-embedder/`, so it survives
+  reboots and does not need `--binary` on the command line.
+- `serve` completes the MCP handshake immediately. A repo that has already been
+  indexed is refreshed in the background on startup (`update_on_start`); a repo
+  that was never indexed is **not** touched until the client calls `reindex`.
+  `index_status` reports `initialized` so an agent knows whether to initialize.
+- Restart opencode after editing the config (config is not hot-reloaded).
+
+The index is stored at `<repo>/.gemma-embedder/index.db`; add `.gemma-embedder/`
+to the target repo's `.gitignore`. To disable the server for one project, add
+`"mcp": { "gemma-embedder": { "enabled": false } }` to that repo's
+`opencode.json`.

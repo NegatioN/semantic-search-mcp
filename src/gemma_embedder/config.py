@@ -79,7 +79,9 @@ class StoreConfig:
 
 @dataclass
 class ReindexConfig:
-    index_on_start: bool = True
+    #: At startup, refresh an already-initialized index. A repo that has never
+    #: been indexed is left alone until an explicit `reindex`/`index` call.
+    update_on_start: bool = True
     watch: bool = True
     interval_seconds: int = 300
     debounce_seconds: float = 2.0

@@ -39,6 +39,7 @@ class RuntimeStatus:
     server_managed: bool
     last_reindex: str | None
     by_language: dict[str, int]
+    initialized: bool = False
     watching: bool = False
     watch_interval_seconds: float = 0.0
 
@@ -49,6 +50,7 @@ class RuntimeStatus:
             "chunks": self.chunks,
             "vectors": self.vectors,
             "dim": self.dim,
+            "initialized": self.initialized,
             "model": {
                 "repo": self.model_repo,
                 "server_url": self.server_url,
@@ -174,9 +176,18 @@ class Runtime:
             store.set_meta("model_repo", mc.repo)
             store.set_meta("dim", str(mc.dim))
             store.set_meta("normalize", str(mc.normalize).lower())
+            store.set_meta("initialized", "true")
             store.set_meta("last_reindex", datetime.now(UTC).isoformat())
             self.reload()
             return report
+
+    def is_initialized(self) -> bool:
+        """True once an index has been built (explicitly) for this repo."""
+        store = self.open_store()
+        if store.get_meta("initialized") == "true":
+            return True
+        # Backwards-compat: an existing non-empty index counts as initialized.
+        return store.stats()["files"] > 0
 
     def reload(self) -> None:
         """Rebuild the in-memory search snapshot from the store.
@@ -213,7 +224,10 @@ class Runtime:
             self.watcher.stop()
             self.watcher = None
 
-    def _watch_reindex(self) -> IndexReport:
+    def _watch_reindex(self) -> IndexReport | None:
+        # Never auto-index a repo that was not explicitly initialized.
+        if not self.is_initialized():
+            return None
         return self.index()
 
     # -- search -------------------------------------------------------------
@@ -257,6 +271,7 @@ class Runtime:
                 server_managed=mc.manage_server,
                 last_reindex=store.get_meta("last_reindex"),
                 by_language=stats["by_language"],
+                initialized=(store.get_meta("initialized") == "true" or stats["files"] > 0),
                 watching=bool(self.watcher and self.watcher.running),
                 watch_interval_seconds=float(self.config.reindex.interval_seconds),
             )

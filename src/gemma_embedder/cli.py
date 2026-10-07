@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import threading
 import time
 
 from . import __version__, probe
@@ -32,7 +34,7 @@ def _load_config(args: argparse.Namespace):
 
 
 def _cmd_doctor(args: argparse.Namespace) -> int:
-    binary = find_binary(args.binary)
+    binary = find_binary(args.binary or os.environ.get("GEMMA_EMBEDDER_BINARY"))
     print(f"llama binary : {binary or 'NOT FOUND'}")
     if not binary:
         print(f"install with : {INSTALL_HINT}")
@@ -157,25 +159,42 @@ def _cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _start_background_index(runtime: Runtime) -> None:
+    """Run the initial index off the MCP handshake path."""
+
+    def work() -> None:
+        try:
+            report = runtime.index()
+            print(
+                f"initial index: {report.changed} changed, "
+                f"{report.unchanged} unchanged, {report.chunks} chunks",
+                file=sys.stderr,
+            )
+        except Exception as exc:  # noqa: BLE001 - never crash the server
+            print(f"initial index failed: {exc}", file=sys.stderr)
+
+    threading.Thread(target=work, name="gemma-initial-index", daemon=True).start()
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     from .mcp.server import run as run_server
 
     cfg = _load_config(args)
     with Runtime(cfg) as runtime:
         runtime.open_store()
-        runtime.start_model()
-        if cfg.reindex.index_on_start:
-            report = runtime.index()
-            print(
-                f"indexed: {report.changed} changed, {report.unchanged} unchanged, "
-                f"{report.chunks} chunks",
-                file=sys.stderr,
-            )
-        else:
-            runtime.reload()
+        runtime.reload()
         if cfg.reindex.watch:
             runtime.start_watching()
             print("watching for changes", file=sys.stderr)
+        if runtime.is_initialized():
+            # Only refresh repos that were explicitly initialized.
+            if cfg.reindex.update_on_start:
+                _start_background_index(runtime)
+        else:
+            print(
+                "no index for this repo yet; call the `reindex` tool to build one",
+                file=sys.stderr,
+            )
         run_server(runtime, cfg.server.transport)
     return 0
 

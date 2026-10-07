@@ -24,7 +24,10 @@ path = ".gemma-embedder/index.db"
 backend = "numpy"
 
 [reindex]
-index_on_start = true
+# Refresh an already-initialized index at startup. A repo that was never
+# indexed is left untouched until an explicit `reindex`/`index` call.
+update_on_start = true
+watch = true
 interval_seconds = 300
 debounce_seconds = 2.0
 
