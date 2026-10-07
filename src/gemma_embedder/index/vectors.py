@@ -47,6 +47,9 @@ class NumpyVectorStore:
         self._matrix: np.ndarray | None = None
         self._records: list[dict[str, Any]] = []
         self._dim: int | None = None
+        # Precomputed for vectorized filtering (avoids Python loops per query).
+        self._paths: np.ndarray | None = None
+        self._granularities: np.ndarray | None = None
 
     @property
     def size(self) -> int:
@@ -62,12 +65,16 @@ class NumpyVectorStore:
             self._matrix = None
             self._records = []
             self._dim = None
+            self._paths = None
+            self._granularities = None
             return
         self._matrix = np.vstack([np.asarray(r["vector"], dtype=np.float32) for r in records])
         self._dim = int(self._matrix.shape[1])
         self._records = [
             {key: value for key, value in r.items() if key != "vector"} for r in records
         ]
+        self._paths = np.array([str(r["path"]) for r in self._records])
+        self._granularities = np.array([str(r.get("granularity") or "file") for r in self._records])
 
     def search(
         self,
@@ -89,9 +96,9 @@ class NumpyVectorStore:
         if path or (granularity and granularity != "any"):
             mask = np.ones(len(self._records), dtype=bool)
             if path:
-                mask &= np.array([str(r["path"]).startswith(path) for r in self._records])
+                mask &= np.char.startswith(self._paths, path)
             if granularity and granularity != "any":
-                mask &= np.array([r["granularity"] == granularity for r in self._records])
+                mask &= self._granularities == granularity
             scores = np.where(mask, scores, -np.inf)
         else:
             mask = None

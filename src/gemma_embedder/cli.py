@@ -1,7 +1,7 @@
 """Console entrypoint for gemma-embedder.
 
 Commands: ``doctor``, ``probe``, ``index``, ``watch``, ``search``, ``status``,
-``serve``.
+``serve``, ``bench``.
 """
 
 from __future__ import annotations
@@ -159,6 +159,37 @@ def _cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_bench(args: argparse.Namespace) -> int:
+    from .bench import cpu_summary, format_table, run_bench
+
+    cfg = _load_config(args)
+    dim = args.dim or cfg.model.dim
+    sizes = [int(s) for s in args.sizes.replace(" ", "").split(",") if s]
+    cpu = cpu_summary()
+    rows = run_bench(sizes, dim, repeats=args.repeats, k=args.k)
+    if args.json:
+        payload = {
+            "cpu": cpu,
+            "dim": dim,
+            "k": args.k,
+            "rows": [r.as_dict() for r in rows],
+        }
+        print(json.dumps(payload, indent=2))
+    else:
+        print(f"CPU: {cpu}  (CPU-only; search is memory-bandwidth bound)")
+        print(f"Search scaling (synthetic; dim={dim}, k={args.k}, path filter ~10%)")
+        print(format_table(rows))
+        print()
+        print("Notes:")
+        print("  search(ms)  = vectorized dot product over all chunks (query embedding excluded)")
+        print("  filter+(ms) = same, plus the vectorized path/granularity mask (NumPy/C-level)")
+        print("  build(ms)   = snapshot rebuild on every reindex, incl. metadata arrays")
+        print("  mem(MB)     = n * dim * 4 for vectors; path/granularity arrays add more")
+        print("  threads     = dot product uses OpenBLAS (~1-4 threads, plateaus; not all cores);")
+        print("                query embedding runs in llama.cpp (multi-threaded) and is excluded.")
+    return 0
+
+
 def _start_background_index(runtime: Runtime) -> None:
     """Run the initial index off the MCP handshake path."""
 
@@ -253,6 +284,20 @@ def build_parser() -> argparse.ArgumentParser:
     serve = sub.add_parser("serve", help="run the MCP server (stdio)")
     _add_common(serve)
     serve.set_defaults(func=_cmd_serve)
+
+    bench = sub.add_parser(
+        "bench", help="microbenchmark search scaling on synthetic data (no model)"
+    )
+    bench.add_argument("--config", default=None)
+    bench.add_argument("--root", default=None)
+    bench.add_argument("--dim", type=int, default=0, help="defaults to the config dim")
+    bench.add_argument(
+        "--sizes", default="1000,10000,100000,1000000", help="comma-separated chunk counts"
+    )
+    bench.add_argument("--repeats", type=int, default=20)
+    bench.add_argument("-k", type=int, default=10)
+    bench.add_argument("--json", action="store_true")
+    bench.set_defaults(func=_cmd_bench)
 
     return parser
 

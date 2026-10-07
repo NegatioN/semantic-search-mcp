@@ -9,3 +9,5 @@ venv/
 .gemma-embedder/
 build/
 dist/
+.idea/
+.jj/

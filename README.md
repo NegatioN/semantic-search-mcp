@@ -139,6 +139,10 @@ to that repo's `.gitignore`.
 
 # Phase-0 sanity probe against the model
 .venv/bin/gemma-embedder probe
+
+# rough search-scaling microbenchmark (synthetic data, no model needed)
+.venv/bin/gemma-embedder bench
+.venv/bin/gemma-embedder bench --sizes 10000,100000,1000000 --json
 ```
 
 Add `--binary /path/to/llama-server` to any command, or rely on
@@ -259,6 +263,56 @@ transport = "stdio"
 Environment overrides: `GEMMA_EMBEDDER_BINARY`, `GEMMA_EMBEDDER_SERVER_URL`.
 
 ---
+
+## Performance
+
+Search latency is dominated by two things:
+
+- **Query embedding** — a single HTTP call to `llama-server`. Roughly constant
+  (a few ms plus model warm-up) and independent of corpus size.
+- **Vector search** — an exact dot product over every chunk, `O(n · dim)`,
+  memory-bandwidth bound.
+
+`gemma-embedder bench` measures the second part on synthetic data (no model or
+index required). Numbers below are **CPU-only**, on an **AMD Ryzen 7 5700X
+(8 cores / 16 threads)**, `dim=256`, `k=10`:
+
+```
+    chunks  dim   mem(MB)  build(ms)  search(ms)  filter+(ms)  search/s
+     1,000  256       1.0       1.89       0.043        0.059     23201
+    10,000  256      10.2      15.12       0.102        0.167      9783
+   100,000  256     102.4     162.15       4.684        5.941       213
+ 1,000,000  256    1024.0    1830.20      54.785       58.819        18
+```
+
+Threading (measured by varying `OPENBLAS_NUM_THREADS` at 1M chunks):
+
+- The dot product runs in NumPy/OpenBLAS and uses **~1–4 threads**, not all 16
+  cores; it is **memory-bandwidth bound**, so extra cores stop helping quickly.
+- The `path`/`granularity` filter is vectorized (`np.char.startswith` /
+  array comparison), so it runs at C speed in the main thread.
+- Query embedding (excluded from `bench`) runs in `llama.cpp`, which *is*
+  multi-threaded. The runtime core count matters mostly there, not for search.
+
+Other notes:
+
+- **`path`/`granularity` filtering is now roughly on par with the dot product**
+  (`filter+(ms)` ≈ `search(ms)`), and both scale linearly with `n`. It was
+  previously a Python `O(n)` loop that cost ~3–4× more than the dot product at
+  large `n` (e.g. ~177 ms → ~59 ms at 1M) — see
+  `NumpyVectorStore.search` in `src/gemma_embedder/index/vectors.py`.
+- **Memory** = `n · dim · 4` bytes for vectors (1 GB per million chunks at
+  `dim=256`; 3 GB at `dim=768`), plus the precomputed metadata arrays: paths cost
+  roughly `max_path_len · n` bytes and granularities ~`6 · n` bytes.
+- **`build`/reload** rebuilds the whole snapshot (vectors + metadata + `vstack`)
+  and is paid on every reindex; constructing the metadata arrays adds some cost
+  especially at 1M chunks.
+- Unfiltered search is effectively free for real repos (sub-ms to a few ms);
+  it only becomes noticeable past ~100k chunks.
+
+So for typical repositories (thousands of chunks) exact brute-force search is
+more than fast enough. Reach for ANN (e.g. `sqlite-vec`) only past a few hundred
+thousand chunks.
 
 ## Troubleshooting
 
