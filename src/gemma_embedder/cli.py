@@ -1,6 +1,7 @@
 """Console entrypoint for gemma-embedder.
 
-Commands: ``doctor``, ``probe``, ``index``, ``search``, ``status``, ``serve``.
+Commands: ``doctor``, ``probe``, ``index``, ``watch``, ``search``, ``status``,
+``serve``.
 """
 
 from __future__ import annotations
@@ -8,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 
 from . import __version__, probe
 from . import config as config_mod
@@ -52,6 +54,37 @@ def _cmd_index(args: argparse.Namespace) -> int:
         report = runtime.index(subpath=args.path, force=args.force, progress=progress)
     print(json.dumps(report.as_dict(), indent=2))
     return 0 if not report.errors else 1
+
+
+def _cmd_watch(args: argparse.Namespace) -> int:
+    cfg = _load_config(args)
+    if not cfg.reindex.watch:
+        print("watcher disabled (reindex.watch = false)", file=sys.stderr)
+        return 1
+
+    with Runtime(cfg) as runtime:
+        runtime.start_model()
+        if args.no_initial:
+            runtime.reload()
+        else:
+            report = runtime.index()
+            print(
+                f"indexed: {report.changed} changed, {report.unchanged} unchanged, "
+                f"{report.chunks} chunks",
+                file=sys.stderr,
+            )
+        runtime.start_watching()
+        print(
+            f"watching for changes (debounce {cfg.reindex.debounce_seconds}s, "
+            f"interval {cfg.reindex.interval_seconds}s) — ctrl-c to stop",
+            file=sys.stderr,
+        )
+        try:
+            while runtime.watcher is not None and runtime.watcher.running:
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            pass
+    return 0
 
 
 def _print_hits(hits) -> None:
@@ -102,6 +135,10 @@ def _print_status(status: RuntimeStatus) -> None:
     print(f"vectors       : {status.vectors} (dim {status.dim})")
     print(f"model         : {status.model_repo}")
     print(f"server        : {status.server_url} (managed={status.server_managed})")
+    print(
+        f"watching      : {'yes' if status.watching else 'no'} "
+        f"(interval {int(status.watch_interval_seconds)}s)"
+    )
     print(f"last reindex  : {status.last_reindex}")
     if status.by_language:
         langs = ", ".join(f"{k}={v}" for k, v in sorted(status.by_language.items()))
@@ -136,6 +173,9 @@ def _cmd_serve(args: argparse.Namespace) -> int:
             )
         else:
             runtime.reload()
+        if cfg.reindex.watch:
+            runtime.start_watching()
+            print("watching for changes", file=sys.stderr)
         run_server(runtime, cfg.server.transport)
     return 0
 
@@ -170,6 +210,11 @@ def build_parser() -> argparse.ArgumentParser:
     index.add_argument("--force", action="store_true", help="re-embed everything")
     index.add_argument("--quiet", action="store_true")
     index.set_defaults(func=_cmd_index)
+
+    watch = sub.add_parser("watch", help="index and re-index on file changes")
+    _add_common(watch)
+    watch.add_argument("--no-initial", action="store_true", help="skip the initial index pass")
+    watch.set_defaults(func=_cmd_watch)
 
     search = sub.add_parser("search", help="semantic search the index")
     _add_common(search)

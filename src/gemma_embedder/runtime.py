@@ -9,6 +9,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Self
 
 from .chunking.base import Chunk
@@ -16,6 +17,7 @@ from .config import Config
 from .index.indexer import Indexer, IndexReport
 from .index.store import SQLiteStore
 from .index.vectors import NumpyVectorStore, SearchHit
+from .index.watcher import ReindexScheduler
 from .model.client import EmbeddingClient
 from .model.prefixes import format_query
 from .model.server import INSTALL_HINT, ServerManager, find_binary, parse_host_port
@@ -37,6 +39,8 @@ class RuntimeStatus:
     server_managed: bool
     last_reindex: str | None
     by_language: dict[str, int]
+    watching: bool = False
+    watch_interval_seconds: float = 0.0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -52,6 +56,10 @@ class RuntimeStatus:
             },
             "last_reindex": self.last_reindex,
             "by_language": self.by_language,
+            "reindex": {
+                "watching": self.watching,
+                "interval_seconds": self.watch_interval_seconds,
+            },
         }
 
 
@@ -62,6 +70,7 @@ class Runtime:
         self.client: EmbeddingClient | None = None
         self.store: SQLiteStore | None = None
         self.vector = NumpyVectorStore(snippet_chars=config.index.snippet_chars)
+        self.watcher: ReindexScheduler | None = None
         self._lock = threading.RLock()
 
     # -- lifecycle ----------------------------------------------------------
@@ -74,38 +83,42 @@ class Runtime:
     def start_model(self) -> EmbeddingClient:
         if self.client is not None:
             return self.client
-        mc = self.config.model
-        base_url = mc.server_url
+        with self._lock:
+            if self.client is not None:
+                return self.client
+            mc = self.config.model
+            base_url = mc.server_url
 
-        if mc.manage_server:
-            binary = find_binary(mc.binary or None)
-            if not binary:
-                raise RuntimeError_(f"no llama binary found. Install with: {INSTALL_HINT}")
-            host, _ = parse_host_port(mc.server_url)
-            self.server_manager = ServerManager(
-                binary,
-                model_repo=mc.repo,
-                host=host,
-                port=0,
-                ctx_size=mc.ctx_size,
-                gpu_layers=mc.gpu_layers,
-                health_timeout=mc.startup_timeout,
+            if mc.manage_server:
+                binary = find_binary(mc.binary or None)
+                if not binary:
+                    raise RuntimeError_(f"no llama binary found. Install with: {INSTALL_HINT}")
+                host, _ = parse_host_port(mc.server_url)
+                self.server_manager = ServerManager(
+                    binary,
+                    model_repo=mc.repo,
+                    host=host,
+                    port=0,
+                    ctx_size=mc.ctx_size,
+                    gpu_layers=mc.gpu_layers,
+                    health_timeout=mc.startup_timeout,
+                )
+                self.server_manager.start()
+                base_url = self.server_manager.base_url
+
+            client = EmbeddingClient(
+                base_url,
+                api_key=mc.api_key or None,
+                normalize=mc.normalize,
+                dim=mc.dim or None,
             )
-            self.server_manager.start()
-            base_url = self.server_manager.base_url
-
-        client = EmbeddingClient(
-            base_url,
-            api_key=mc.api_key or None,
-            normalize=mc.normalize,
-            dim=mc.dim or None,
-        )
-        if not client.health():
-            raise RuntimeError_(f"embeddings server not healthy at {base_url}")
-        self.client = client
-        return client
+            if not client.health():
+                raise RuntimeError_(f"embeddings server not healthy at {base_url}")
+            self.client = client
+            return client
 
     def close(self) -> None:
+        self.stop_watching()
         if self.server_manager is not None:
             self.server_manager.stop()
             self.server_manager = None
@@ -161,16 +174,47 @@ class Runtime:
             store.set_meta("model_repo", mc.repo)
             store.set_meta("dim", str(mc.dim))
             store.set_meta("normalize", str(mc.normalize).lower())
-            import datetime as _dt
-
-            store.set_meta("last_reindex", _dt.datetime.now(_dt.UTC).isoformat())
+            store.set_meta("last_reindex", datetime.now(UTC).isoformat())
             self.reload()
             return report
 
     def reload(self) -> None:
+        """Rebuild the in-memory search snapshot from the store.
+
+        A fresh :class:`NumpyVectorStore` is built and then assigned atomically,
+        so concurrent readers always see a consistent snapshot.
+        """
         with self._lock:
             store = self.open_store()
-            self.vector.build(store.load_records())
+            records = store.load_records()
+            snapshot = NumpyVectorStore(snippet_chars=self.config.index.snippet_chars)
+            snapshot.build(records)
+            self.vector = snapshot
+
+    # -- watching -----------------------------------------------------------
+    def start_watching(self) -> ReindexScheduler:
+        """Start debounced + periodic reindexing of the configured roots."""
+        if self.watcher is not None and self.watcher.running:
+            return self.watcher
+        svc = self.config.reindex
+        roots = [self.config.resolve_root(r) for r in self.config.index.roots]
+        self.watcher = ReindexScheduler(
+            roots,
+            self._watch_reindex,
+            interval_seconds=svc.interval_seconds,
+            debounce_seconds=svc.debounce_seconds,
+            store_path=self.config.store_path,
+        )
+        self.watcher.start()
+        return self.watcher
+
+    def stop_watching(self) -> None:
+        if self.watcher is not None:
+            self.watcher.stop()
+            self.watcher = None
+
+    def _watch_reindex(self) -> IndexReport:
+        return self.index()
 
     # -- search -------------------------------------------------------------
     def search(
@@ -182,19 +226,19 @@ class Runtime:
         min_score: float = 0.0,
         granularity: str = "any",
     ) -> list[SearchHit]:
-        with self._lock:
-            self.open_store()
-            if self.vector.size == 0:
-                self.reload()
-            client = self.start_model()
-            query_vector = client.embed_one(format_query(query))
-            return self.vector.search(
-                query_vector,
-                k=k,
-                min_score=min_score,
-                path=path,
-                granularity=granularity,
-            )
+        if self.vector.size == 0:
+            self.reload()
+        # Grab an immutable snapshot so searches are never blocked by reindexing.
+        snapshot = self.vector
+        client = self.start_model()
+        query_vector = client.embed_one(format_query(query))
+        return snapshot.search(
+            query_vector,
+            k=k,
+            min_score=min_score,
+            path=path,
+            granularity=granularity,
+        )
 
     # -- introspection ------------------------------------------------------
     def status(self) -> RuntimeStatus:
@@ -213,6 +257,8 @@ class Runtime:
                 server_managed=mc.manage_server,
                 last_reindex=store.get_meta("last_reindex"),
                 by_language=stats["by_language"],
+                watching=bool(self.watcher and self.watcher.running),
+                watch_interval_seconds=float(self.config.reindex.interval_seconds),
             )
 
     def get_context(

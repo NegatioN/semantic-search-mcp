@@ -80,6 +80,7 @@ class StoreConfig:
 @dataclass
 class ReindexConfig:
     index_on_start: bool = True
+    watch: bool = True
     interval_seconds: int = 300
     debounce_seconds: float = 2.0
 

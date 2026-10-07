@@ -262,3 +262,48 @@ Very short files (e.g. package `__init__.py` docstrings) can rank highly for
 project-name queries because a whole-file embedding is dominated by the
 `title:` path. Symbol-level chunking plus a minimum-chunk-size filter will
 address this.
+
+---
+
+## Phase 2 status (implemented)
+
+Live re-indexing while the MCP server runs.
+
+- `index/watcher.py` — `ReindexScheduler`: a watchdog observer feeds a queue; a
+  single worker thread waits for a debounce quiet period, then runs one
+  incremental reindex. A periodic timer also fires (authoritative reconciliation
+  for missed events and deletions).
+- Three triggers — filesystem events (debounced), the periodic timer, and the
+  on-demand `reindex` tool — funnel through one worker and the runtime lock, so
+  mutations never overlap.
+- `serve` starts the watcher automatically (config `reindex.watch`); the new
+  `watch` command runs a headless indexing daemon.
+- Reads are lock-free: `search` grabs an immutable `NumpyVectorStore` snapshot;
+  a reindex builds a fresh snapshot and assigns it atomically, so queries are
+  never blocked by indexing.
+
+### Config
+
+```toml
+[reindex]
+index_on_start = true
+watch = true
+interval_seconds = 300
+debounce_seconds = 2.0
+```
+
+### Usage
+
+```bash
+gemma-embedder watch --root . --binary "$BIN"          # headless daemon
+gemma-embedder watch --root . --no-initial             # skip initial pass
+gemma-embedder serve --root . --binary "$BIN"          # MCP + watcher
+```
+
+### Verified
+
+- Unit tests: `37 passed` (adds watcher debounce/periodic/ignore tests).
+- Live MCP test: an edit becomes searchable within the debounce window; a
+  deleted file disappears from the index; restarting with `index_on_start=false`
+  preserves state (`last_reindex` unchanged, no full reindex) with the watcher
+  still active.
