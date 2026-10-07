@@ -185,6 +185,25 @@ instructions tell it to call `reindex` when `index_status` reports
 To disable the server for one project, add
 `"mcp": { "gemma-embedder": { "enabled": false } }` to that repo's `opencode.json`.
 
+### Companion skill
+
+The repository ships an opencode skill at `skills/gemma-embedder/SKILL.md` that
+teaches the agent *when* and *how* to use the tools (init gating, scoping, result
+interpretation). Load it globally by pointing opencode at the `skills/` directory:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "skills": {
+    "paths": ["/abs/path/semantic-search-mcp/skills"]
+  }
+}
+```
+
+opencode scans `skills.paths` recursively for `**/SKILL.md`, so the skill needs no
+per-project copy. The MCP tool descriptions remain the portable source of truth;
+the skill only adds opencode-specific workflow guidance.
+
 ---
 
 ## MCP tools
