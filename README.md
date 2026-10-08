@@ -233,7 +233,7 @@ the skill only adds opencode-specific workflow guidance.
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
-| `semantic_search` | `query`, `k=10`, `path?`, `min_score?`, `granularity?` (`any`/`file`/`symbol`) | Ranked hits: `path`, `start_line`, `end_line`, `score`, `snippet` |
+| `semantic_search` | `query`, `k=10`, `path?`, `min_score?`, `granularity?` (`any`/`file`/`symbol`), `diversity?` (MMR 0–1, 0 = plain top-k) | Ranked hits: `path`, `start_line`, `end_line`, `score`, `snippet` |
 | `get_context` | `path`, `start_line=1`, `end_line?`, `context_lines=20` | File lines, expanded by context, with `total_lines` |
 | `reindex` | `path?`, `force=false` | Index report (`scanned`, `changed`, `unchanged`, `deleted`, `chunks`, `errors`) |
 | `index_status` | — | `root`, `files`, `chunks`, `vectors`, `native_dim`, `storage_dim`, `query_dim`, `loaded_dim`, `initialized`, `model`, `last_reindex`, `reindex.watching` |

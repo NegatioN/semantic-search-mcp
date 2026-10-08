@@ -46,6 +46,7 @@ def build_server(runtime: Runtime) -> MCPServer:
         path: str | None = None,
         min_score: float = 0.0,
         granularity: str = "any",
+        diversity: float = 0.0,
     ) -> dict[str, Any]:
         """Search indexed code by meaning.
 
@@ -55,9 +56,18 @@ def build_server(runtime: Runtime) -> MCPServer:
             path: Optional workspace-relative path prefix to restrict results.
             min_score: Minimum cosine similarity in [0, 1].
             granularity: One of "any", "file", "symbol".
+            diversity: MMR strength in [0, 1]; 0 = plain top-k (default), larger
+                values trade a little relevance for a wider variety of files.
         """
         k = max(1, min(int(k), 50))
-        hits = runtime.search(query, k=k, path=path, min_score=min_score, granularity=granularity)
+        hits = runtime.search(
+            query,
+            k=k,
+            path=path,
+            min_score=min_score,
+            granularity=granularity,
+            diversity=max(0.0, float(diversity)),
+        )
         return {
             "query": query,
             "count": len(hits),

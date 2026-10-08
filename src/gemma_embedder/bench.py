@@ -61,6 +61,7 @@ class BenchRow:
     build_ms: float
     search_ms: float
     filtered_ms: float
+    diversified_ms: float
     searches_per_sec: float
 
     def as_dict(self) -> dict:
@@ -71,6 +72,7 @@ class BenchRow:
             "build_ms": round(self.build_ms, 3),
             "search_ms": round(self.search_ms, 3),
             "filtered_ms": round(self.filtered_ms, 3),
+            "diversified_ms": round(self.diversified_ms, 3),
             "searches_per_sec": round(self.searches_per_sec, 1),
         }
 
@@ -111,6 +113,7 @@ def run_bench(
     k: int = 10,
     filter_path: str = "src/",
     filter_ratio: float = 0.1,
+    diversity: float = 0.3,
     seed: int = 0,
 ) -> list[BenchRow]:
     rng = np.random.default_rng(seed)
@@ -141,6 +144,12 @@ def run_bench(
             store.search(query, k=k, path=filter_path)
         filtered_ms = (time.perf_counter() - t0) * 1000.0 / reps
 
+        store.search(query, k=k, diversity=diversity)  # warm up
+        t0 = time.perf_counter()
+        for _ in range(reps):
+            store.search(query, k=k, diversity=diversity)
+        diversified_ms = (time.perf_counter() - t0) * 1000.0 / reps
+
         rows.append(
             BenchRow(
                 n=n,
@@ -149,6 +158,7 @@ def run_bench(
                 build_ms=build_ms,
                 search_ms=search_ms,
                 filtered_ms=filtered_ms,
+                diversified_ms=diversified_ms,
                 searches_per_sec=1000.0 / search_ms if search_ms else 0.0,
             )
         )
@@ -160,13 +170,14 @@ def run_bench(
 def format_table(rows: list[BenchRow]) -> str:
     header = (
         f"{'chunks':>10} {'dim':>4} {'mem(MB)':>9} {'build(ms)':>10} "
-        f"{'search(ms)':>11} {'filter+(ms)':>12} {'search/s':>9}"
+        f"{'search(ms)':>11} {'filter+(ms)':>12} {'div(ms)':>8} {'search/s':>9}"
     )
-    lines = [header, "-" * 70]
+    lines = [header, "-" * 80]
     for r in rows:
         lines.append(
             f"{r.n:>10,} {r.dim:>4} {r.memory_mb:>9.1f} {r.build_ms:>10.2f} "
-            f"{r.search_ms:>11.3f} {r.filtered_ms:>12.3f} {r.searches_per_sec:>9.0f}"
+            f"{r.search_ms:>11.3f} {r.filtered_ms:>12.3f} {r.diversified_ms:>8.3f} "
+            f"{r.searches_per_sec:>9.0f}"
         )
     return "\n".join(lines)
 

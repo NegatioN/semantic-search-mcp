@@ -84,6 +84,7 @@ class NumpyVectorStore:
         min_score: float = 0.0,
         path: str | None = None,
         granularity: str | None = None,
+        diversity: float = 0.0,
     ) -> list[SearchHit]:
         if self._matrix is None or not self._records:
             return []
@@ -104,8 +105,12 @@ class NumpyVectorStore:
             mask = None
 
         k = max(1, min(k, len(self._records)))
-        candidates = np.argpartition(-scores, k - 1)[:k]
-        order = candidates[np.argsort(-scores[candidates])]
+        diversity = max(0.0, float(diversity))
+        if diversity == 0.0:
+            candidates = np.argpartition(-scores, k - 1)[:k]
+            order = candidates[np.argsort(-scores[candidates])]
+        else:
+            order = self._mmr_order(scores, k, diversity, mask)
 
         hits: list[SearchHit] = []
         for i in order:
@@ -131,3 +136,36 @@ class NumpyVectorStore:
                 )
             )
         return hits
+
+    def _mmr_order(
+        self, scores: np.ndarray, k: int, diversity: float, mask: np.ndarray | None
+    ) -> np.ndarray:
+        """Maximal Marginal Relevance selection order (relevance - diversity·maxsim).
+
+        Bounded to a top-by-relevance candidate pool so cost is independent of the
+        corpus size (O(pool · k² · dim)); ``diversity=0`` is handled by the caller.
+        """
+        valid = np.flatnonzero(mask) if mask is not None else np.arange(len(self._records))
+        if valid.size == 0:
+            return np.empty(0, dtype=int)
+
+        pool_size = min(valid.size, max(k * 20, 100))
+        valid_scores = scores[valid]
+        pool_local = np.argpartition(-valid_scores, pool_size - 1)[:pool_size]
+        pool_local = pool_local[np.argsort(-valid_scores[pool_local])]
+        pool = valid[pool_local]
+
+        selected = [int(pool[0])]
+        remaining = pool[1:].tolist()
+        selected_vecs = self._matrix[selected].copy()
+        while len(selected) < k and remaining:
+            rem = np.asarray(remaining, dtype=int)
+            sims = self._matrix[rem] @ selected_vecs.T
+            combined = scores[rem] - diversity * sims.max(axis=1)
+            best = int(np.argmax(combined))
+            chosen = remaining.pop(best)
+            selected.append(chosen)
+            selected_vecs = np.vstack([selected_vecs, self._matrix[chosen]])
+        # The diverse *set* is chosen by MMR; present it in relevance order.
+        ordered = np.asarray(selected, dtype=int)
+        return ordered[np.argsort(-scores[ordered])]

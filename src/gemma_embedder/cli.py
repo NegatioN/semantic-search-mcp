@@ -111,6 +111,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
             path=args.path,
             min_score=args.min_score,
             granularity=args.granularity,
+            diversity=args.diversity,
         )
         status = runtime.status()
     if args.json:
@@ -170,7 +171,7 @@ def _cmd_bench(args: argparse.Namespace) -> int:
     dim = args.dim or cfg.model.query_dim
     sizes = [int(s) for s in args.sizes.replace(" ", "").split(",") if s]
     cpu = cpu_summary()
-    rows = run_bench(sizes, dim, repeats=args.repeats, k=args.k)
+    rows = run_bench(sizes, dim, repeats=args.repeats, k=args.k, diversity=args.diversity)
     if args.json:
         payload = {
             "cpu": cpu,
@@ -187,6 +188,7 @@ def _cmd_bench(args: argparse.Namespace) -> int:
         print("Notes:")
         print("  search(ms)  = vectorized dot product over all chunks (query embedding excluded)")
         print("  filter+(ms) = same, plus the vectorized path/granularity mask (NumPy/C-level)")
+        print("  div(ms)     = same, plus MMR diversity re-ranking (pool is bounded)")
         print("  build(ms)   = snapshot rebuild on every reindex, incl. metadata arrays")
         print("  mem(MB)     = n * dim * 4 for vectors; path/granularity arrays add more")
         print("  threads     = dot product uses OpenBLAS (~1-4 threads, plateaus; not all cores);")
@@ -277,6 +279,12 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("--path", default=None)
     search.add_argument("--min-score", type=float, default=0.0)
     search.add_argument("--granularity", choices=["any", "file", "symbol"], default="any")
+    search.add_argument(
+        "--diversity",
+        type=float,
+        default=0.0,
+        help="MMR strength in [0,1]; 0 = plain top-k (default)",
+    )
     search.add_argument("--json", action="store_true")
     search.set_defaults(func=_cmd_search)
 
@@ -300,6 +308,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bench.add_argument("--repeats", type=int, default=20)
     bench.add_argument("-k", type=int, default=10)
+    bench.add_argument(
+        "--diversity", type=float, default=0.3, help="MMR strength for the div(ms) column"
+    )
     bench.add_argument("--json", action="store_true")
     bench.set_defaults(func=_cmd_bench)
 

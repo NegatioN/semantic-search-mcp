@@ -256,6 +256,7 @@ class Runtime:
         path: str | None = None,
         min_score: float = 0.0,
         granularity: str = "any",
+        diversity: float = 0.0,
     ) -> list[SearchHit]:
         if self.vector.size == 0:
             self.reload()
@@ -269,6 +270,7 @@ class Runtime:
             min_score=min_score,
             path=path,
             granularity=granularity,
+            diversity=diversity,
         )
 
     # -- introspection ------------------------------------------------------

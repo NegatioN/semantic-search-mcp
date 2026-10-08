@@ -73,14 +73,31 @@ you never need to re-init.
 
 ## Tools
 
-- `semantic_search(query, k=10, path?, min_score?, granularity?)`
-  Ranked hits: `path`, `start_line`, `end_line`, `score`, `snippet`.
+- `semantic_search(query, k=10, path?, min_score?, granularity?, diversity?)`
+  Ranked hits: `path`, `start_line`, `end_line`, `score`, `snippet`. Set
+  `diversity` (0–1) to spread results across more distinct files when generating
+  candidates; `0` (default) is plain top-k.
 - `get_context(path, start_line=1, end_line?, context_lines=20)`
   Verbatim lines for a range, plus `total_lines`.
 - `reindex(path?, force=false)`
   Build/refresh the index. Reports `scanned`/`changed`/`unchanged`/`deleted`/`chunks`.
 - `index_status()`
   `initialized`, `files`, `chunks`, native/storage/query dims, `last_reindex`.
+
+### Choosing `diversity`
+
+`diversity` is MMR strength: `0` = plain top-k (default); higher trades a little
+relevance for a wider spread. It does **not** scale with repo size — it depends
+on how redundant the candidates are and on `k`. The aim is to cover the query's
+relevant topics roughly in proportion to their relevance (MMR is a greedy
+approximation of that xQuAD/α-nDCG ideal).
+
+Calibration: the common library default is *balanced* MMR (LangChain
+`lambda_mult=0.5`), which is ranking-equivalent to about `diversity ≈ 1.0` on our
+scale; a relevance-leaning `λ=0.7` is about `diversity ≈ 0.4`. In practice start
+around **0.3–0.5**: raise it when the top-k is near-duplicates, lower it (or add
+a `min_score` floor) when unrelated files appear. On small or heterogeneous repos
+keep it low.
 
 ## More examples
 

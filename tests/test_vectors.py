@@ -57,5 +57,37 @@ class TestNumpyVectorStore(unittest.TestCase):
         self.assertEqual(empty.search([1.0, 0.0], k=3), [])
 
 
+class TestDiversity(unittest.TestCase):
+    """MMR: a near-duplicate should give way to a distinct-but-relevant hit."""
+
+    def setUp(self):
+        # query direction is [1,0,0]; two near-identical "dup.py" chunks plus b.
+        self.store = NumpyVectorStore()
+        self.store.build(
+            [
+                _rec(1, "dup.py", [0.8, 0.6, 0.0]),
+                _rec(2, "dup.py", [0.913811, 0.406138, 0.0]),
+                _rec(3, "other.py", [0.707107, -0.707107, 0.0]),
+            ]
+        )
+        self.query = [1.0, 0.0, 0.0]
+
+    def test_diversity_zero_matches_topk(self):
+        base = [h.chunk_id for h in self.store.search(self.query, k=2)]
+        div0 = [h.chunk_id for h in self.store.search(self.query, k=2, diversity=0.0)]
+        self.assertEqual(base, div0)
+
+    def test_diversity_replaces_near_duplicate(self):
+        plain = [h.path for h in self.store.search(self.query, k=2)]
+        diverse = [h.path for h in self.store.search(self.query, k=2, diversity=0.5)]
+        self.assertEqual(plain, ["dup.py", "dup.py"])
+        self.assertEqual(diverse, ["dup.py", "other.py"])
+
+    def test_diversity_keeps_top_hit(self):
+        top = self.store.search(self.query, k=1)[0].chunk_id
+        div_top = self.store.search(self.query, k=1, diversity=0.9)[0].chunk_id
+        self.assertEqual(top, div_top)
+
+
 if __name__ == "__main__":
     unittest.main()
