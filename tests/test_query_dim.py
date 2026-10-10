@@ -3,11 +3,11 @@ import unittest
 
 import numpy as np
 
-from gemma_embedder import config as config_mod
-from gemma_embedder.chunking.base import Chunk
-from gemma_embedder.index.store import SQLiteStore
-from gemma_embedder.model.client import view
-from gemma_embedder.runtime import Runtime, RuntimeError_
+from zemsearch import config as config_mod
+from zemsearch.chunking.base import Chunk
+from zemsearch.index.store import SQLiteStore
+from zemsearch.model.client import view
+from zemsearch.runtime import Runtime, RuntimeError_
 
 
 def _unit(vector: np.ndarray) -> list[float]:

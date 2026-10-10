@@ -7,7 +7,7 @@ and a set of queries with each, and compares:
   - vector-level agreement (cosine between the two quants' doc embeddings)
   - ranking agreement at query_dim=256 (top-1 / overlap@k / Spearman)
 
-Run:  GEMMA_EMBEDDER_BINARY=/path/llama-server .venv/bin/python scripts/quant_ranking_probe.py
+Run:  ZEMSEARCH_BINARY=/path/llama-server .venv/bin/python scripts/quant_ranking_probe.py
 """
 
 from __future__ import annotations
@@ -26,10 +26,10 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from gemma_embedder import config as config_mod
-from gemma_embedder.index.walker import walk
-from gemma_embedder.model.client import l2_normalize
-from gemma_embedder.model.prefixes import format_document, format_query
+from zemsearch import config as config_mod
+from zemsearch.index.walker import walk
+from zemsearch.model.client import l2_normalize
+from zemsearch.model.prefixes import format_document, format_query
 
 ROOT = Path.home() / "projects" / "clickhouse-tests"
 REPO = "ggml-org/embeddinggemma-2-GGUF"
@@ -51,18 +51,18 @@ QUERIES = [
 
 
 def find_binary() -> str:
-    env = os.environ.get("GEMMA_EMBEDDER_BINARY")
+    env = os.environ.get("ZEMSEARCH_BINARY")
     if env:
         return env
     for c in (
-        Path.home() / ".local/share/gemma-embedder/llama.cpp-master/build-cuda/bin/llama-server",
-        Path.home() / ".local/share/gemma-embedder/llama.cpp-master/build-static/bin/llama-server",
+        Path.home() / ".local/share/zemsearch/llama.cpp-master/build-cuda/bin/llama-server",
+        Path.home() / ".local/share/zemsearch/llama.cpp-master/build-static/bin/llama-server",
     ):
         if c.exists():
             return str(c)
     found = shutil.which("llama-server")
     if not found:
-        raise SystemExit("no llama-server found; set GEMMA_EMBEDDER_BINARY")
+        raise SystemExit("no llama-server found; set ZEMSEARCH_BINARY")
     return found
 
 

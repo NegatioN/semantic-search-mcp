@@ -111,7 +111,7 @@ class ReindexScheduler:
                 scheduled += 1
         self._observer = observer if scheduled else None
 
-        self._worker = threading.Thread(target=self._loop, name="gemma-reindex", daemon=True)
+        self._worker = threading.Thread(target=self._loop, name="zemsearch-reindex", daemon=True)
         self._worker.start()
         if self._observer is not None:
             self._observer.start()

@@ -25,8 +25,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from gemma_embedder.index.store import SQLiteStore
-from gemma_embedder.model.client import l2_normalize
+from zemsearch.index.store import SQLiteStore
+from zemsearch.model.client import l2_normalize
 
 REAL_STORE = "/tmp/opencode/ch-768/index.db"
 SIZES = [10_000, 100_000, 300_000]

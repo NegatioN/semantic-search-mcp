@@ -12,7 +12,7 @@ Because the server is asked for raw vectors, the cosine arm reproduces exactly
 what the production pipeline does (server-normalized 768 -> truncate d ->
 renormalize), so any difference is purely the normalization effect.
 
-Run:  GEMMA_EMBEDDER_BINARY=/path/llama-server .venv/bin/python scripts/unnormalized_probe.py
+Run:  ZEMSEARCH_BINARY=/path/llama-server .venv/bin/python scripts/unnormalized_probe.py
 """
 
 from __future__ import annotations
@@ -31,9 +31,9 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from gemma_embedder import config as config_mod
-from gemma_embedder.index.walker import walk
-from gemma_embedder.model.prefixes import format_document, format_query
+from zemsearch import config as config_mod
+from zemsearch.index.walker import walk
+from zemsearch.model.prefixes import format_document, format_query
 
 ROOT = Path.home() / "projects" / "clickhouse-tests"
 MODEL_REPO = "ggml-org/embeddinggemma-2-GGUF:Q8_0"
@@ -53,18 +53,18 @@ QUERIES = [
 
 
 def find_binary() -> str:
-    env = os.environ.get("GEMMA_EMBEDDER_BINARY")
+    env = os.environ.get("ZEMSEARCH_BINARY")
     if env:
         return env
     for candidate in (
-        Path.home() / ".local/share/gemma-embedder/llama.cpp-master/build-cuda/bin/llama-server",
-        Path.home() / ".local/share/gemma-embedder/llama.cpp-master/build-static/bin/llama-server",
+        Path.home() / ".local/share/zemsearch/llama.cpp-master/build-cuda/bin/llama-server",
+        Path.home() / ".local/share/zemsearch/llama.cpp-master/build-static/bin/llama-server",
     ):
         if candidate.exists():
             return str(candidate)
     found = shutil.which("llama-server")
     if not found:
-        raise SystemExit("no llama-server found; set GEMMA_EMBEDDER_BINARY")
+        raise SystemExit("no llama-server found; set ZEMSEARCH_BINARY")
     return found
 
 

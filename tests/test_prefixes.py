@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from gemma_embedder.model.prefixes import format_document, format_query
+from zemsearch.model.prefixes import format_document, format_query
 
 
 class TestCodeRetrievalPrefixes(unittest.TestCase):

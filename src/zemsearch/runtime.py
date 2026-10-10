@@ -13,7 +13,8 @@ from datetime import UTC, datetime
 from typing import Any, Self
 
 from .chunking.base import Chunk
-from .config import Config
+from .config import Config, migrate_legacy_store
+from .index.codegraph_indexer import CodeGraphIndexer
 from .index.indexer import Indexer, IndexReport
 from .index.store import SQLiteStore
 from .index.vectors import NumpyVectorStore, SearchHit
@@ -87,6 +88,7 @@ class Runtime:
     # -- lifecycle ----------------------------------------------------------
     def open_store(self) -> SQLiteStore:
         if self.store is None:
+            migrate_legacy_store(self.config.root, self.config.store_path)
             self.store = SQLiteStore(self.config.store_path)
             self.store.init_schema()
         return self.store
@@ -173,8 +175,18 @@ class Runtime:
             if not force and stored_dim is not None and stored_dim != NATIVE_DIM:
                 # Legacy/compact index: upgrade storage to native so all rows agree.
                 force = True
-            indexer = Indexer(self.config.root, self.config.index, client, store)
+            source = self.config.index.source
+            stored_source = store.get_meta("index_source")
+            if not force and stored_source is not None and stored_source != source:
+                force = True  # switching source requires a full rebuild
+            if source == "codegraph":
+                indexer: Indexer | CodeGraphIndexer = CodeGraphIndexer(
+                    self.config.root, self.config.index, client, store
+                )
+            else:
+                indexer = Indexer(self.config.root, self.config.index, client, store)
             report = indexer.index(subpath=subpath, force=force, progress=progress)
+            store.set_meta("index_source", source)
             store.set_meta("model_repo", mc.repo)
             store.set_meta("normalize", str(mc.normalize).lower())
             store.set_meta("native_dim", str(NATIVE_DIM))
@@ -209,7 +221,7 @@ class Runtime:
             if stored_dim is not None and query_dim > stored_dim:
                 raise RuntimeError_(
                     f"query_dim {query_dim} exceeds stored index dimension {stored_dim}; "
-                    f"rebuild at native {NATIVE_DIM} with `gemma-embedder index --force` "
+                    f"rebuild at native {NATIVE_DIM} with `zemsearch index --force` "
                     "(or the reindex tool with force=true)"
                 )
             records = store.load_records(dim=query_dim)

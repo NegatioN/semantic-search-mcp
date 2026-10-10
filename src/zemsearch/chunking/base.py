@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 from ..model.prefixes import format_document
@@ -27,3 +28,12 @@ class Chunk:
 
     def document(self) -> str:
         return format_document(self.text, title=self.title)
+
+
+def document_hash(chunk: Chunk) -> str:
+    """Hash of the exact embedded document (prefix included).
+
+    Used for incremental change detection: if two runs produce the same hash
+    for a chunk, its embedding is unchanged and does not need to be recomputed.
+    """
+    return hashlib.sha256(chunk.document().encode("utf-8")).hexdigest()

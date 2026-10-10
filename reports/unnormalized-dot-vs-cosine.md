@@ -70,6 +70,6 @@ vectors are normalized; on raw embeddings it silently ranks by magnitude.
 ## Reproduce
 
 ```bash
-GEMMA_EMBEDDER_BINARY=~/.local/share/gemma-embedder/llama.cpp-master/build-cuda/bin/llama-server \
+ZEMSEARCH_BINARY=~/.local/share/zemsearch/llama.cpp-master/build-cuda/bin/llama-server \
   .venv/bin/python scripts/unnormalized_probe.py
 ```

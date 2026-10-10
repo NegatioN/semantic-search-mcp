@@ -22,7 +22,7 @@ overlap_chars = 600
 snippet_chars = 1600
 
 [store]
-path = ".gemma-embedder/index.db"
+path = ".zemsearch/index.db"
 backend = "numpy"
 
 [reindex]

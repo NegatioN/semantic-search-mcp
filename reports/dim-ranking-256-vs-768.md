@@ -85,6 +85,6 @@ is easy to A/B later.
 ## Reproduce
 
 ```bash
-GEMMA_EMBEDDER_BINARY=~/.local/share/gemma-embedder/llama.cpp-master/build-cuda/bin/llama-server \
+ZEMSEARCH_BINARY=~/.local/share/zemsearch/llama.cpp-master/build-cuda/bin/llama-server \
   .venv/bin/python scripts/dim_ranking_probe.py
 ```

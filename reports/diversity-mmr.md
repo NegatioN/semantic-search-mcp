@@ -7,7 +7,7 @@ already picked. `diversity=0` is exactly the old top-k behavior, so the feature
 is opt-in and backward compatible.
 
 Interface: `semantic_search(query, …, diversity=0.0)`, CLI
-`gemma-embedder search … --diversity 0.4`, and the `bench` `div(ms)` column.
+`zemsearch search … --diversity 0.4`, and the `bench` `div(ms)` column.
 
 ## Speed (synthetic, `dim=256`, `k=10`, `diversity=0.3`)
 
@@ -58,7 +58,7 @@ heterogeneous corpus "distinct" often means "unrelated".
 ## Reproduce
 
 ```bash
-gemma-embedder bench --sizes 10000,100000,1000000 --diversity 0.3
-gemma-embedder search "clickhouse settings variants and presets" -k 6 \
+zemsearch bench --sizes 10000,100000,1000000 --diversity 0.3
+zemsearch search "clickhouse settings variants and presets" -k 6 \
     --root ~/projects/clickhouse-tests --diversity 0.4
 ```

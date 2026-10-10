@@ -14,7 +14,7 @@ from typing import Any, Self
 
 import numpy as np
 
-from ..chunking.base import Chunk
+from ..chunking.base import Chunk, document_hash
 from ..languages import language_for
 
 SCHEMA_VERSION = "1"
@@ -100,6 +100,19 @@ class SQLiteStore:
         rows = self.conn.execute("SELECT path, sha256 FROM files").fetchall()
         return {row["path"]: row["sha256"] for row in rows}
 
+    def get_symbol_hashes(self) -> dict[tuple[str, str, str], str | None]:
+        """Map ``(path, symbol, kind) -> embedded-document hash`` for symbol chunks.
+
+        This is the diff basis for the codegraph source: comparing each symbol's
+        current :func:`document_hash` against this map decides what to re-embed.
+        """
+        rows = self.conn.execute(
+            "SELECT f.path AS path, c.symbol AS symbol, c.kind AS kind, c.text_sha256 AS h "
+            "FROM chunks c JOIN files f ON f.id = c.file_id "
+            "WHERE c.granularity = 'symbol'"
+        ).fetchall()
+        return {(row["path"], row["symbol"] or "", row["kind"] or ""): row["h"] for row in rows}
+
     def get_file_stat(self, rel: str) -> tuple[float, int] | None:
         row = self.conn.execute("SELECT mtime, size FROM files WHERE path = ?", (rel,)).fetchone()
         if row is None:
@@ -132,7 +145,8 @@ class SQLiteStore:
             for chunk, vector in zip(chunks, vectors):
                 ccur = self.conn.execute(
                     "INSERT INTO chunks(file_id, granularity, symbol, kind, language, "
-                    "start_line, end_line, content) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                    "start_line, end_line, content, text_sha256) "
+                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         file_id,
                         chunk.granularity,
@@ -142,6 +156,7 @@ class SQLiteStore:
                         chunk.start_line,
                         chunk.end_line,
                         chunk.text,
+                        document_hash(chunk),
                     ),
                 )
                 chunk_id = ccur.lastrowid

@@ -4,7 +4,7 @@ import time
 import unittest
 from pathlib import Path
 
-from gemma_embedder.index.watcher import ReindexScheduler, should_ignore
+from zemsearch.index.watcher import ReindexScheduler, should_ignore
 
 
 class TestShouldIgnore(unittest.TestCase):
@@ -13,7 +13,7 @@ class TestShouldIgnore(unittest.TestCase):
             ".git/config",
             ".jj/repo",
             "node_modules/pkg/index.js",
-            "src/.gemma-embedder/index.db",
+            "src/.zemsearch/index.db",
             "foo/bar.py.swp",
             "x/.#lock",
             "editor~",
@@ -22,7 +22,7 @@ class TestShouldIgnore(unittest.TestCase):
             self.assertTrue(should_ignore(path), path)
 
     def test_kept(self):
-        for path in ["src/a.py", "README.md", "gemma-embedder.toml", "pkg/main.rs"]:
+        for path in ["src/a.py", "README.md", "zemsearch.toml", "pkg/main.rs"]:
             self.assertFalse(should_ignore(path), path)
 
     def test_store_path_ignored(self):

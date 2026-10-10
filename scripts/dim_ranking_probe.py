@@ -4,7 +4,7 @@
 Stores are native 768, so this loads the SAME stored vectors at two view
 dimensions and compares rankings for a set of architectural queries.
 
-Run:  GEMMA_EMBEDDER_BINARY=/path/llama-server .venv/bin/python scripts/dim_ranking_probe.py
+Run:  ZEMSEARCH_BINARY=/path/llama-server .venv/bin/python scripts/dim_ranking_probe.py
 """
 
 from __future__ import annotations
@@ -18,10 +18,10 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from gemma_embedder import config as config_mod
-from gemma_embedder.model.client import view
-from gemma_embedder.model.prefixes import format_query
-from gemma_embedder.runtime import Runtime
+from zemsearch import config as config_mod
+from zemsearch.model.client import view
+from zemsearch.model.prefixes import format_query
+from zemsearch.runtime import Runtime
 
 ROOT = Path.home() / "projects" / "clickhouse-tests"
 DIMS = [256, 768]
@@ -40,18 +40,18 @@ QUERIES = [
 
 
 def find_binary() -> str:
-    env = os.environ.get("GEMMA_EMBEDDER_BINARY")
+    env = os.environ.get("ZEMSEARCH_BINARY")
     if env:
         return env
     for candidate in (
-        Path.home() / ".local/share/gemma-embedder/llama.cpp-master/build-cuda/bin/llama-server",
-        Path.home() / ".local/share/gemma-embedder/llama.cpp-master/build-static/bin/llama-server",
+        Path.home() / ".local/share/zemsearch/llama.cpp-master/build-cuda/bin/llama-server",
+        Path.home() / ".local/share/zemsearch/llama.cpp-master/build-static/bin/llama-server",
     ):
         if candidate.exists():
             return str(candidate)
     found = shutil.which("llama-server")
     if not found:
-        raise SystemExit("no llama-server found; set GEMMA_EMBEDDER_BINARY")
+        raise SystemExit("no llama-server found; set ZEMSEARCH_BINARY")
     return found
 
 

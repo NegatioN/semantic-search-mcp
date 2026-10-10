@@ -1,6 +1,6 @@
-"""Configuration loading for gemma-embedder.
+"""Configuration loading for zemsearch.
 
-Reads an optional ``gemma-embedder.toml`` from the project root and merges it
+Reads an optional ``zemsearch.toml`` from the project root and merges it
 over built-in defaults. Uses only the standard library (``tomllib``).
 """
 
@@ -11,7 +11,14 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-CONFIG_FILENAME = "gemma-embedder.toml"
+CONFIG_FILENAME = "zemsearch.toml"
+#: Previous config filename, still read when ``CONFIG_FILENAME`` is absent.
+LEGACY_CONFIG_FILENAME = "gemma-embedder.toml"
+
+#: Directory (next to the indexed repo) that holds the embedding index.
+STORE_DIRNAME = ".zemsearch"
+#: Previous name of the same directory; auto-migrated to :data:`STORE_DIRNAME`.
+LEGACY_STORE_DIRNAME = ".gemma-embedder"
 
 #: Patterns always excluded from indexing (in addition to .gitignore).
 DEFAULT_EXCLUDES = [
@@ -33,7 +40,10 @@ DEFAULT_EXCLUDES = [
     "**/build/**",
     "target/",
     "**/target/**",
-    ".gemma-embedder/",
+    f"{STORE_DIRNAME}/",
+    f"{LEGACY_STORE_DIRNAME}/",
+    ".codegraph/",
+    "**/.codegraph/**",
     "*.min.js",
     "*.min.css",
     "*.lock",
@@ -71,11 +81,20 @@ class IndexConfig:
     max_chunk_chars: int = 6000
     overlap_chars: int = 600
     snippet_chars: int = 1600
+    #: Where chunks come from: "file" (walk + whole-file chunk) or "codegraph"
+    #: (read a CodeGraph ``.codegraph/codegraph.db`` symbol graph).
+    source: str = "file"
+    #: Workspace-relative path to the CodeGraph SQLite database (source above).
+    codegraph_db: str = ".codegraph/codegraph.db"
+    #: Max 1-hop neighbours per relation folded into a symbol's embedded text.
+    codegraph_max_neighbors: int = 12
+    #: Cap on the source slice appended to a symbol's enriched text.
+    codegraph_max_body_chars: int = 2000
 
 
 @dataclass
 class StoreConfig:
-    path: str = ".gemma-embedder/index.db"
+    path: str = f"{STORE_DIRNAME}/index.db"
     backend: str = "numpy"
 
 
@@ -116,6 +135,31 @@ class Config:
         return p if p.is_absolute() else base / p
 
 
+def migrate_legacy_store(root: Path, store_path: Path) -> bool:
+    """Move a legacy ``.zemsearch/`` index to ``.zemsearch/`` (once).
+
+    Only acts on the *default* store location (a custom ``store.path`` is left
+    alone). Moves the database plus its SQLite sidecars so an existing index
+    keeps working after the directory rename. Returns True if a move happened.
+    """
+    if store_path.parent != (root / STORE_DIRNAME):
+        return False
+    legacy_db = root / LEGACY_STORE_DIRNAME / "index.db"
+    if store_path.exists() or not legacy_db.exists():
+        return False
+
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    for suffix in ("", "-wal", "-shm", "-journal"):
+        src = Path(str(legacy_db) + suffix)
+        if src.exists():
+            src.replace(Path(str(store_path) + suffix))
+    try:
+        (root / LEGACY_STORE_DIRNAME).rmdir()
+    except OSError:
+        pass
+    return True
+
+
 def _section(data: dict, name: str) -> dict:
     value = data.get(name, {})
     return value if isinstance(value, dict) else {}
@@ -136,6 +180,10 @@ def load(path: Path | str | None = None, root: Path | str | None = None) -> Conf
             config_path = root_path / config_path
     else:
         config_path = root_path / CONFIG_FILENAME
+        if not config_path.is_file():
+            legacy = root_path / LEGACY_CONFIG_FILENAME
+            if legacy.is_file():
+                config_path = legacy
 
     data: dict = {}
     if config_path.is_file():
@@ -158,10 +206,11 @@ def load(path: Path | str | None = None, root: Path | str | None = None) -> Conf
     if "server" in data:
         config.server = _build(ServerConfig, _section(data, "server"))
 
-    env_binary = os.environ.get("GEMMA_EMBEDDER_BINARY")
+    # Legacy env names are still honored so existing setups keep working.
+    env_binary = os.environ.get("ZEMSEARCH_BINARY") or os.environ.get("GEMMA_EMBEDDER_BINARY")
     if env_binary:
         config.model.binary = env_binary
-    env_url = os.environ.get("GEMMA_EMBEDDER_SERVER_URL")
+    env_url = os.environ.get("ZEMSEARCH_SERVER_URL") or os.environ.get("GEMMA_EMBEDDER_SERVER_URL")
     if env_url:
         config.model.server_url = env_url
 

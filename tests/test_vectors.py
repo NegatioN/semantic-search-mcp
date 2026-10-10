@@ -1,6 +1,6 @@
 import unittest
 
-from gemma_embedder.index.vectors import NumpyVectorStore
+from zemsearch.index.vectors import NumpyVectorStore
 
 
 def _rec(chunk_id, path, vector, granularity="file", symbol=None):

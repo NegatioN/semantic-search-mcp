@@ -1,6 +1,6 @@
 import unittest
 
-from gemma_embedder.bench import format_table, run_bench
+from zemsearch.bench import format_table, run_bench
 
 
 class TestBench(unittest.TestCase):

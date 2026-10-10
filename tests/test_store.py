@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from gemma_embedder.chunking.base import Chunk
-from gemma_embedder.index.store import SQLiteStore
+from zemsearch.chunking.base import Chunk, document_hash
+from zemsearch.index.store import SQLiteStore
 
 
 def _chunk(text: str, path: str = "a.py") -> Chunk:
@@ -86,6 +86,29 @@ class TestSQLiteStore(unittest.TestCase):
         self.assertEqual(self.store.get_file_hashes(), {"a.py": "abc"})
         self.store.set_meta("model_repo", "test")
         self.assertEqual(self.store.get_meta("model_repo"), "test")
+
+    def test_symbol_hashes_and_document_hash(self):
+        chunk = Chunk(
+            path="a.go",
+            title="a.go::Alpha",
+            text="function Alpha",
+            granularity="symbol",
+            symbol="Alpha",
+            kind="function",
+        )
+        self.store.replace_file(
+            "a.go",
+            mtime=1.0,
+            size=8,
+            sha256="abc",
+            language="go",
+            chunks=[chunk],
+            vectors=[[1.0, 0.0]],
+        )
+        self.assertEqual(
+            self.store.get_symbol_hashes(),
+            {("a.go", "Alpha", "function"): document_hash(chunk)},
+        )
 
 
 if __name__ == "__main__":

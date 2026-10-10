@@ -1,4 +1,4 @@
-# gemma-embedder — Implementation Guide
+# zemsearch — Implementation Guide
 
 Local semantic code search powered by **EmbeddingGemma 2**, run natively via
 `llama.cpp`, exposed as an MCP server with periodic re-indexing.
@@ -117,12 +117,12 @@ EmbeddingGemma 2 is trained with task-instruction prefixes. Use the exact string
 ## Project layout (target)
 
 ```
-gemma-embedder/
+zemsearch/
 ├── README.md
 ├── GUIDE.md
 ├── pyproject.toml
-├── gemma-embedder.toml
-├── src/gemma_embedder/
+├── zemsearch.toml
+├── src/zemsearch/
 │   ├── cli.py
 │   ├── config.py
 │   ├── model/
@@ -150,7 +150,7 @@ gemma-embedder/
 └── tests/
 ```
 
-Entrypoints: `gemma-embedder serve` (MCP), `index`, `search`, `status`, `doctor`.
+Entrypoints: `zemsearch serve` (MCP), `index`, `search`, `status`, `doctor`.
 
 ---
 
@@ -212,24 +212,24 @@ uv pip install --python .venv/bin/python -e ".[dev]"
 
 ```bash
 BIN=/path/to/llama-server          # source-built (see above)
-.venv/bin/gemma-embedder index  --root . --binary "$BIN"
-.venv/bin/gemma-embedder search "how are embeddings stored and loaded" -k 5 --root . --binary "$BIN"
-.venv/bin/gemma-embedder status --root .
-.venv/bin/gemma-embedder serve  --root . --binary "$BIN"   # MCP over stdio
+.venv/bin/zemsearch index  --root . --binary "$BIN"
+.venv/bin/zemsearch search "how are embeddings stored and loaded" -k 5 --root . --binary "$BIN"
+.venv/bin/zemsearch status --root .
+.venv/bin/zemsearch serve  --root . --binary "$BIN"   # MCP over stdio
 ```
 
-`--binary` can be omitted by setting `binary` in `gemma-embedder.toml` or the
-`GEMMA_EMBEDDER_BINARY` env var. Use `--no-spawn` to target an external server.
+`--binary` can be omitted by setting `binary` in `zemsearch.toml` or the
+`ZEMSEARCH_BINARY` env var. Use `--no-spawn` to target an external server.
 
 ### MCP configuration
 
 ```json
 {
   "mcp": {
-    "gemma-embedder": {
+    "zemsearch": {
       "type": "local",
       "command": [
-        "/abs/path/.venv/bin/gemma-embedder", "serve",
+        "/abs/path/.venv/bin/zemsearch", "serve",
         "--root", "/abs/path",
         "--binary", "/abs/path/to/llama-server"
       ],
@@ -308,10 +308,10 @@ debounce_seconds = 2.0
 ### Usage
 
 ```bash
-gemma-embedder index  --root . --binary "$BIN"         # explicit first index
-gemma-embedder watch  --root . --binary "$BIN"         # explicit daemon (indexes)
-gemma-embedder watch  --root . --no-initial            # only update if inited
-gemma-embedder serve  --root . --binary "$BIN"         # MCP + watcher (no auto-init)
+zemsearch index  --root . --binary "$BIN"         # explicit first index
+zemsearch watch  --root . --binary "$BIN"         # explicit daemon (indexes)
+zemsearch watch  --root . --no-initial            # only update if inited
+zemsearch serve  --root . --binary "$BIN"         # MCP + watcher (no auto-init)
 ```
 
 ### Verified
@@ -324,6 +324,34 @@ gemma-embedder serve  --root . --binary "$BIN"         # MCP + watcher (no auto-
 
 ---
 
+## Code graph source (implemented)
+
+An alternative to tree-sitter symbol chunking: mirror the symbol database built by
+**[CodeGraph](https://github.com/colbymchenry/codegraph)** — a local, pre-indexed
+code knowledge graph that auto-syncs an SQLite graph of symbols and call edges
+(`.codegraph/codegraph.db`) — instead of walking files. Set
+`index.source = "codegraph"`.
+
+- `codegraph.py` — read-only `CodeGraphReader`: opens the db `mode=ro`, gates on
+  `project_metadata.index_state == "complete"`, and turns each symbol node into a
+  graph-enriched `Chunk` (signature + docstring + 1-hop neighbours + source
+  slice). `chunking.base.document_hash` hashes the exact embedded document.
+- `index/codegraph_indexer.py` — two-level incremental sync: hash every enriched
+  document, diff against `SQLiteStore.get_symbol_hashes()` keyed by
+  `(path, symbol, kind)`, re-embed only changed/new symbols, delete vanished
+  files. Neighbour edits propagate because the neighbourhood is in the document.
+- Change detection **targets the db**: a `(size, mtime_ns)` fingerprint of
+  `codegraph.db` + its WAL sidecars (not `-shm`) short-circuits no-op passes; an
+  extractor-version bump forces a full rebuild.
+- `chunks.text_sha256` now stores `document_hash(chunk)` for every chunk (used as
+  the diff basis); `SQLiteStore.get_symbol_hashes()` reads it back.
+
+Validated on `clickhouse-tests`: 12 files → 92 symbol chunks, second pass is a
+no-op, and symbol search returns e.g. `Client::CreateTable` / `Client::Optimize`
+where the whole-file index returned near-duplicate report files.
+
+---
+
 ## Using with opencode
 
 Registered globally in `~/.config/opencode/opencode.json`:
@@ -331,17 +359,17 @@ Registered globally in `~/.config/opencode/opencode.json`:
 ```json
 {
   "mcp": {
-    "gemma-embedder": {
+    "zemsearch": {
       "type": "local",
       "command": [
-        "/home/joakim/projects/gemma-embedder/.venv/bin/gemma-embedder",
+        "/home/joakim/projects/zemsearch/.venv/bin/zemsearch",
         "serve",
         "--root",
         "."
       ],
       "cwd": ".",
       "environment": {
-        "GEMMA_EMBEDDER_BINARY": "/home/joakim/.local/share/gemma-embedder/llama.cpp-master/build-static/bin/llama-server"
+        "ZEMSEARCH_BINARY": "/home/joakim/.local/share/zemsearch/llama.cpp-master/build-static/bin/llama-server"
       },
       "enabled": true,
       "timeout": 120000
@@ -352,8 +380,8 @@ Registered globally in `~/.config/opencode/opencode.json`:
 
 - `cwd: "."` plus `--root .` means the server indexes whatever workspace
   opencode is opened in — the same global entry works for any repo.
-- `GEMMA_EMBEDDER_BINARY` points at a **static** llama-server build (no local
-  `.so` dependencies) under `~/.local/share/gemma-embedder/`, so it survives
+- `ZEMSEARCH_BINARY` points at a **static** llama-server build (no local
+  `.so` dependencies) under `~/.local/share/zemsearch/`, so it survives
   reboots and does not need `--binary` on the command line.
 - `serve` completes the MCP handshake immediately. A repo that has already been
   indexed is refreshed in the background on startup (`update_on_start`); a repo
@@ -361,7 +389,7 @@ Registered globally in `~/.config/opencode/opencode.json`:
   `index_status` reports `initialized` so an agent knows whether to initialize.
 - Restart opencode after editing the config (config is not hot-reloaded).
 
-The index is stored at `<repo>/.gemma-embedder/index.db`; add `.gemma-embedder/`
+The index is stored at `<repo>/.zemsearch/index.db`; add `.zemsearch/`
 to the target repo's `.gitignore`. To disable the server for one project, add
-`"mcp": { "gemma-embedder": { "enabled": false } }` to that repo's
+`"mcp": { "zemsearch": { "enabled": false } }` to that repo's
 `opencode.json`.

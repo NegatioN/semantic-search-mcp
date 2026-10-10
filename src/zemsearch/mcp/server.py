@@ -28,8 +28,8 @@ INSTRUCTIONS = (
 
 def build_server(runtime: Runtime) -> MCPServer:
     server = MCPServer(
-        name="gemma-embedder",
-        title="gemma-embedder",
+        name="zemsearch",
+        title="zemsearch",
         version=__version__,
         instructions=INSTRUCTIONS,
     )

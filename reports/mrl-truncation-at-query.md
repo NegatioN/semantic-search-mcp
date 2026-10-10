@@ -132,7 +132,7 @@ switch `d`. D pays 3× RAM to make dimension changes instant.
 ## Reproduce
 
 ```bash
-.venv/bin/gemma-embedder index --root ~/projects/clickhouse-tests \
+.venv/bin/zemsearch index --root ~/projects/clickhouse-tests \
     --config /tmp/opencode/dim768.toml      # store full 768-d vectors
 .venv/bin/python scripts/mrl_truncation_probe.py   # strategies A/B/C/D (in-RAM)
 .venv/bin/python scripts/mrl_lazy_load_probe.py    # strategy E (prefix load from SQLite)

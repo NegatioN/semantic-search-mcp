@@ -1,4 +1,4 @@
-"""Console entrypoint for gemma-embedder.
+"""Console entrypoint for zemsearch.
 
 Commands: ``doctor``, ``probe``, ``index``, ``watch``, ``search``, ``status``,
 ``serve``, ``bench``.
@@ -34,7 +34,7 @@ def _load_config(args: argparse.Namespace):
 
 
 def _cmd_doctor(args: argparse.Namespace) -> int:
-    binary = find_binary(args.binary or os.environ.get("GEMMA_EMBEDDER_BINARY"))
+    binary = find_binary(args.binary or os.environ.get("ZEMSEARCH_BINARY"))
     print(f"llama binary : {binary or 'NOT FOUND'}")
     if not binary:
         print(f"install with : {INSTALL_HINT}")
@@ -210,7 +210,7 @@ def _start_background_index(runtime: Runtime) -> None:
         except Exception as exc:  # noqa: BLE001 - never crash the server
             print(f"initial index failed: {exc}", file=sys.stderr)
 
-    threading.Thread(target=work, name="gemma-initial-index", daemon=True).start()
+    threading.Thread(target=work, name="zemsearch-initial-index", daemon=True).start()
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
@@ -237,7 +237,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", default=None, help="path to gemma-embedder.toml")
+    parser.add_argument("--config", default=None, help="path to zemsearch.toml")
     parser.add_argument("--root", default=None, help="workspace root (default: cwd)")
     parser.add_argument("--binary", default=None, help="path to llama/llama-server")
     parser.add_argument("--server-url", default=None)
@@ -247,7 +247,7 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="gemma-embedder")
+    parser = argparse.ArgumentParser(prog="zemsearch")
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command", required=True)
 

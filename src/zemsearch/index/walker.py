@@ -27,6 +27,7 @@ PRUNE_DIRS = {
     ".mypy_cache",
     ".pytest_cache",
     ".ruff_cache",
+    ".zemsearch",
     ".gemma-embedder",
     "dist",
     "build",

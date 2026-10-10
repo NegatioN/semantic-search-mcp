@@ -1,7 +1,7 @@
 import unittest
 
-from gemma_embedder.chunking.base import Chunk
-from gemma_embedder.chunking.file import split_text
+from zemsearch.chunking.base import Chunk
+from zemsearch.chunking.file import split_text
 
 
 class TestSplitText(unittest.TestCase):

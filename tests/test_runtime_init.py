@@ -1,9 +1,9 @@
 import tempfile
 import unittest
 
-from gemma_embedder import config as config_mod
-from gemma_embedder.chunking.base import Chunk
-from gemma_embedder.runtime import Runtime
+from zemsearch import config as config_mod
+from zemsearch.chunking.base import Chunk
+from zemsearch.runtime import Runtime
 
 
 class TestRuntimeInitialization(unittest.TestCase):

@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from gemma_embedder import config as config_mod
-from gemma_embedder.index.walker import walk
+from zemsearch import config as config_mod
+from zemsearch.index.walker import walk
 
 
 class TestWalker(unittest.TestCase):

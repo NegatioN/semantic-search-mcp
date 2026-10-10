@@ -53,6 +53,6 @@ projector. Verified: `mmproj-embeddinggemma-2-BF16.gguf` was **not** downloaded.
 ## Reproduce
 
 ```bash
-GEMMA_EMBEDDER_BINARY=~/.local/share/gemma-embedder/llama.cpp-master/build-cuda/bin/llama-server \
+ZEMSEARCH_BINARY=~/.local/share/zemsearch/llama.cpp-master/build-cuda/bin/llama-server \
   .venv/bin/python scripts/quant_ranking_probe.py
 ```

@@ -1,12 +1,12 @@
 ---
-name: gemma-embedder
-description: Use FIRST when a request is broad or vague and how it maps onto this codebase is unclear — for example a flow, a feature, or an area with no obvious name. Semantic search surfaces candidate files and, importantly, the codebase's own vocabulary (an internal name like `UzerFlow`), which you then feed into a normal grep/read. Also use to survey an unfamiliar repo. Use plain grep/read when you already know a concrete symbol, file, or exact string. Requires the gemma-embedder MCP tools.
+name: zemsearch
+description: Use FIRST when a request is broad or vague and how it maps onto this codebase is unclear — for example a flow, a feature, or an area with no obvious name. Semantic search surfaces candidate files and, importantly, the codebase's own vocabulary (an internal name like `UzerFlow`), which you then feed into a normal grep/read. Also use to survey an unfamiliar repo. Use plain grep/read when you already know a concrete symbol, file, or exact string. Requires the zemsearch MCP tools.
 ---
 
-# gemma-embedder — semantic code search
+# zemsearch — semantic code search
 
 Local semantic search over an EmbeddingGemma 2 index, exposed as MCP tools. The
-index lives at `<repo>/.gemma-embedder/index.db`; vectors are unit-normalized, so
+index lives at `<repo>/.zemsearch/index.db`; vectors are unit-normalized, so
 scores are cosine similarity.
 
 ## When to use this skill
@@ -115,13 +115,13 @@ keep it low.
 - **Stale right after edits** → the watcher reindexes after a short debounce
   (~2s); wait a moment or call `reindex`.
 - **Huge repo** → the first index can take minutes; scope with `path` or exclude
-  directories via a `gemma-embedder.toml` at the repo root.
+  directories via a `zemsearch.toml` at the repo root.
 - **Whole-file chunks (current)** → `start_line`/`end_line` may span a whole file;
   open hits with `get_context`, and prefer grepping the discovered terms once you
   have them.
-- **Index dir** → `<repo>/.gemma-embedder/`; add it to the repo's `.gitignore`.
+- **Index dir** → `<repo>/.zemsearch/`; add it to the repo's `.gitignore`.
 
 ## Tuning
 
-Optional `gemma-embedder.toml` at the repo root controls excludes, chunk size,
+Optional `zemsearch.toml` at the repo root controls excludes, chunk size,
 watch interval, and more. See the project README.

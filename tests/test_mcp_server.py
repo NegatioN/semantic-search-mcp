@@ -1,9 +1,9 @@
 import tempfile
 import unittest
 
-from gemma_embedder import config as config_mod
-from gemma_embedder.mcp.server import build_server
-from gemma_embedder.runtime import Runtime
+from zemsearch import config as config_mod
+from zemsearch.mcp.server import build_server
+from zemsearch.runtime import Runtime
 
 
 class TestMcpServer(unittest.TestCase):
@@ -14,7 +14,7 @@ class TestMcpServer(unittest.TestCase):
             try:
                 server = build_server(runtime)
                 self.assertIsNotNone(server)
-                self.assertEqual(server.name, "gemma-embedder")
+                self.assertEqual(server.name, "zemsearch")
             finally:
                 runtime.close()
 

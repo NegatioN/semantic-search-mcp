@@ -5,13 +5,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from gemma_embedder.model.client import (
+from zemsearch.model.client import (
     cosine,
     dot,
     l2_normalize,
     view,
 )
-from gemma_embedder.probe import parse_host_port
+from zemsearch.probe import parse_host_port
 
 
 class TestVectorMath(unittest.TestCase):
