@@ -11,6 +11,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .model.server import DEFAULT_MODEL_REPO
+
 CONFIG_FILENAME = "zemsearch.toml"
 #: Previous config filename, still read when ``CONFIG_FILENAME`` is absent.
 LEGACY_CONFIG_FILENAME = "gemma-embedder.toml"
@@ -56,8 +58,7 @@ DEFAULT_EXCLUDES = [
 
 @dataclass
 class ModelConfig:
-    backend: str = "llama-server"
-    repo: str = "ggml-org/embeddinggemma-2-GGUF:BF16"
+    repo: str = DEFAULT_MODEL_REPO
     binary: str = ""
     manage_server: bool = True
     server_url: str = "http://127.0.0.1:8080"
@@ -77,7 +78,6 @@ class IndexConfig:
     exclude: list[str] = field(default_factory=lambda: list(DEFAULT_EXCLUDES))
     respect_gitignore: bool = True
     max_file_bytes: int = 1_000_000
-    chunk: str = "file"
     max_chunk_chars: int = 6000
     overlap_chars: int = 600
     snippet_chars: int = 1600
@@ -95,7 +95,6 @@ class IndexConfig:
 @dataclass
 class StoreConfig:
     path: str = f"{STORE_DIRNAME}/index.db"
-    backend: str = "numpy"
 
 
 @dataclass

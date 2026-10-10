@@ -1,5 +1,4 @@
 [model]
-backend = "llama-server"
 repo = "ggml-org/embeddinggemma-2-GGUF:BF16"
 binary = ""                 # path to llama-server; empty = search PATH
 manage_server = true
@@ -16,14 +15,12 @@ startup_timeout = 600.0
 roots = ["."]
 respect_gitignore = true
 max_file_bytes = 1000000
-chunk = "file"
 max_chunk_chars = 6000
 overlap_chars = 600
 snippet_chars = 1600
 
 [store]
 path = ".zemsearch/index.db"
-backend = "numpy"
 
 [reindex]
 # Refresh an already-initialized index at startup. A repo that was never

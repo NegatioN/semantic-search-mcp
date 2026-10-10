@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 import platform
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -180,7 +180,3 @@ def format_table(rows: list[BenchRow]) -> str:
             f"{r.searches_per_sec:>9.0f}"
         )
     return "\n".join(lines)
-
-
-def rows_to_list(rows: list[BenchRow]) -> list[dict]:
-    return [asdict(r) for r in rows]

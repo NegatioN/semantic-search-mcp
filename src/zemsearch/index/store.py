@@ -7,7 +7,7 @@ single NumPy matrix without per-row conversion.
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Self
@@ -112,12 +112,6 @@ class SQLiteStore:
             "WHERE c.granularity = 'symbol'"
         ).fetchall()
         return {(row["path"], row["symbol"] or "", row["kind"] or ""): row["h"] for row in rows}
-
-    def get_file_stat(self, rel: str) -> tuple[float, int] | None:
-        row = self.conn.execute("SELECT mtime, size FROM files WHERE path = ?", (rel,)).fetchone()
-        if row is None:
-            return None
-        return (row["mtime"], row["size"])
 
     def replace_file(
         self,
@@ -232,19 +226,6 @@ class SQLiteStore:
             )
         return records
 
-    def get_chunk(self, chunk_id: int) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            "SELECT c.id AS chunk_id, f.path AS path, c.granularity, c.symbol, "
-            "c.kind, c.language, c.start_line, c.end_line, c.content "
-            "FROM chunks c JOIN files f ON f.id = c.file_id WHERE c.id = ?",
-            (chunk_id,),
-        ).fetchone()
-        return dict(row) if row else None
-
-    def get_file(self, rel: str) -> dict[str, Any] | None:
-        row = self.conn.execute("SELECT * FROM files WHERE path = ?", (rel,)).fetchone()
-        return dict(row) if row else None
-
     # -- stats --------------------------------------------------------------
     def stats(self) -> dict[str, Any]:
         files = self.conn.execute("SELECT COUNT(*) AS n FROM files").fetchone()["n"]
@@ -265,7 +246,3 @@ class SQLiteStore:
 
     def __exit__(self, *_exc: object) -> None:
         self.close()
-
-
-def iter_paths(paths: Iterable[Path]) -> list[str]:
-    return [p.as_posix() for p in paths]

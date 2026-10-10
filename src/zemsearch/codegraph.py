@@ -62,7 +62,6 @@ class CodeGraphReader:
     root: Path
     max_neighbors: int = 12
     max_body_chars: int = 2000
-    include_body: bool = True
     _source_cache: dict[str, list[str] | None] = field(
         default_factory=dict, init=False, repr=False
     )
@@ -165,10 +164,11 @@ class CodeGraphReader:
             values = relations.get(label)
             if values:
                 parts.append(f"{label}: " + ", ".join(values))
-        if self.include_body:
-            body = self._source_slice(str(node["file_path"]), int(node["start_line"]), int(node["end_line"]))
-            if body:
-                parts.append(body)
+        body = self._source_slice(
+            str(node["file_path"]), int(node["start_line"]), int(node["end_line"])
+        )
+        if body:
+            parts.append(body)
         return "\n".join(parts)
 
     def chunks(self) -> list[Chunk]:

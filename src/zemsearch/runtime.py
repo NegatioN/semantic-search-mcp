@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Self
 
-from .chunking.base import Chunk
 from .config import Config, migrate_legacy_store
 from .index.codegraph_indexer import CodeGraphIndexer
 from .index.indexer import Indexer, IndexReport
@@ -339,10 +338,3 @@ class Runtime:
             "total_lines": total,
             "content": snippet,
         }
-
-    def get_chunk(self, chunk_id: int) -> dict[str, Any] | None:
-        return self.open_store().get_chunk(chunk_id)
-
-
-def chunk_titles(chunks: list[Chunk]) -> list[str]:
-    return [c.title for c in chunks]

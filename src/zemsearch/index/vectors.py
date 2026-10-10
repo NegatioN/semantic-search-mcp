@@ -17,7 +17,6 @@ import numpy as np
 class SearchHit:
     chunk_id: int
     path: str
-    title: str
     symbol: str | None
     kind: str | None
     language: str | None
@@ -125,7 +124,6 @@ class NumpyVectorStore:
                 SearchHit(
                     chunk_id=int(record["chunk_id"]),
                     path=str(record["path"]),
-                    title=str(record.get("symbol") or record["path"]),
                     symbol=record.get("symbol"),
                     kind=record.get("kind"),
                     language=record.get("language"),
