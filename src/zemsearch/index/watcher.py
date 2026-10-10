@@ -18,21 +18,36 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import pathspec
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from .walker import PRUNE_DIRS
+from ..config import DEFAULT_EXCLUDES
+from .walker import FileScope, make_spec
 
 _IGNORED_SUFFIXES = {".swp", ".swx", ".tmp", ".temp", ".bak"}
 _IGNORED_NAMES = {".DS_Store"}
 _PROCESSED_EVENT_TYPES = {"created", "modified", "deleted", "moved"}
 
+_DEFAULT_SPEC: pathspec.GitIgnoreSpec | None = None
 
-def should_ignore(path: str, store_path: Path | None = None) -> bool:
-    """Return True for paths that must never trigger a reindex."""
+
+def _default_spec() -> pathspec.GitIgnoreSpec:
+    global _DEFAULT_SPEC
+    if _DEFAULT_SPEC is None:
+        _DEFAULT_SPEC = make_spec(DEFAULT_EXCLUDES)
+    return _DEFAULT_SPEC
+
+
+def should_ignore(
+    path: str, store_path: Path | None = None, scope: FileScope | None = None
+) -> bool:
+    """Return True for paths that must never trigger a reindex.
+
+    ``scope`` carries the workspace's gitignore-aware matcher; without one (e.g.
+    a standalone call) the built-in default excludes are used.
+    """
     candidate = Path(path)
-    if any(part in PRUNE_DIRS for part in candidate.parts):
-        return True
     name = candidate.name
     if name in _IGNORED_NAMES:
         return True
@@ -42,11 +57,14 @@ def should_ignore(path: str, store_path: Path | None = None) -> bool:
         return True
     if store_path is not None:
         try:
-            if candidate.resolve() == store_path.resolve():
+            if candidate.resolve() == Path(store_path).resolve():
                 return True
         except OSError:
             pass
-    return False
+    if scope is not None:
+        rel = scope.rel(candidate)
+        return scope.ignores(rel) if rel is not None else False
+    return bool(_default_spec().match_file(candidate.as_posix()))
 
 
 class _DebounceHandler(FileSystemEventHandler):
@@ -73,6 +91,7 @@ class ReindexScheduler:
         interval_seconds: float = 0.0,
         debounce_seconds: float = 2.0,
         store_path: Path | None = None,
+        scope: FileScope | None = None,
         on_index: Callable[[Any], None] | None = None,
         on_error: Callable[[Exception], None] | None = None,
     ) -> None:
@@ -81,6 +100,7 @@ class ReindexScheduler:
         self._interval = float(interval_seconds)
         self._debounce = float(debounce_seconds)
         self._store_path = Path(store_path) if store_path else None
+        self._scope = scope
         self._on_index = on_index
         self._on_error = on_error
 
@@ -132,7 +152,7 @@ class ReindexScheduler:
         self._queue.put(None)
 
     def _ignore(self, path: str) -> bool:
-        return should_ignore(path, self._store_path)
+        return should_ignore(path, self._store_path, self._scope)
 
     def _loop(self) -> None:
         last_run = time.monotonic()

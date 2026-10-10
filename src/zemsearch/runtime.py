@@ -17,6 +17,7 @@ from .index.codegraph_indexer import CodeGraphIndexer
 from .index.indexer import Indexer, IndexReport
 from .index.store import SQLiteStore
 from .index.vectors import NumpyVectorStore, SearchHit
+from .index.walker import build_scope
 from .index.watcher import ReindexScheduler
 from .model.client import NATIVE_DIM, EmbeddingClient, view
 from .model.prefixes import format_query
@@ -243,6 +244,7 @@ class Runtime:
             interval_seconds=svc.interval_seconds,
             debounce_seconds=svc.debounce_seconds,
             store_path=self.config.store_path,
+            scope=build_scope(self.config.root, self.config.index),
         )
         self.watcher.start()
         return self.watcher

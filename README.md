@@ -93,8 +93,8 @@ defaults to `0`, which lets `llama.cpp` auto-offload everything.
 ## Install
 
 ```bash
-git clone git@github.com:NegatioN/semantic-search-mcp.git
-cd semantic-search-mcp
+git clone git@github.com:NegatioN/zemsearch.git
+cd zemsearch
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
 ```
@@ -182,7 +182,7 @@ Register the server in `~/.config/opencode/opencode.json`. `cwd: "."` plus
     "zemsearch": {
       "type": "local",
       "command": [
-        "/abs/path/semantic-search-mcp/.venv/bin/zemsearch",
+        "/abs/path/zemsearch/.venv/bin/zemsearch",
         "serve",
         "--root",
         "."
@@ -218,7 +218,7 @@ interpretation). Load it globally by pointing opencode at the `skills/` director
 {
   "$schema": "https://opencode.ai/config.json",
   "skills": {
-    "paths": ["/abs/path/semantic-search-mcp/skills"]
+    "paths": ["/abs/path/zemsearch/skills"]
   }
 }
 ```
@@ -284,6 +284,17 @@ transport = "stdio"
 ```
 
 Environment overrides: `ZEMSEARCH_BINARY`, `ZEMSEARCH_SERVER_URL`.
+
+### What gets indexed (ignore model)
+
+For `source = "file"`, discovery uses one gitignore-semantics matcher shared by
+the walker and the file watcher. It is seeded, in order, with the built-in
+`exclude` defaults (dependencies/build output/caches across ecosystems), then
+every `.gitignore` under the root, then git's own root-relative exclude files
+(`.git/info/exclude` and `core.excludesFile`). Negations (`!pattern`) are honored,
+and a bare `dir/` pattern matches at any depth. Re-include anything the defaults
+skip with a `!` rule in your `.gitignore` or in `exclude`. When
+`respect_gitignore = false`, only `exclude` applies.
 
 ### Code graph source (`source = "codegraph"`)
 

@@ -4,6 +4,8 @@ import time
 import unittest
 from pathlib import Path
 
+from zemsearch import config as config_mod
+from zemsearch.index.walker import build_scope
 from zemsearch.index.watcher import ReindexScheduler, should_ignore
 
 
@@ -27,6 +29,17 @@ class TestShouldIgnore(unittest.TestCase):
 
     def test_store_path_ignored(self):
         self.assertTrue(should_ignore("/tmp/ws/index.db", Path("/tmp/ws/index.db")))
+
+    def test_scope_honors_gitignore(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / ".gitignore").write_text("generated/\n")
+            (root / "generated").mkdir()
+            (root / "generated" / "x.py").write_text("x")
+            (root / "src.py").write_text("x")
+            scope = build_scope(root, config_mod.load(root=d).index)
+            self.assertTrue(should_ignore(str(root / "generated" / "x.py"), scope=scope))
+            self.assertFalse(should_ignore(str(root / "src.py"), scope=scope))
 
 
 class _Recorder:

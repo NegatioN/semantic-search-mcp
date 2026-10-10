@@ -22,30 +22,110 @@ STORE_DIRNAME = ".zemsearch"
 #: Previous name of the same directory; auto-migrated to :data:`STORE_DIRNAME`.
 LEGACY_STORE_DIRNAME = ".gemma-embedder"
 
-#: Patterns always excluded from indexing (in addition to .gitignore).
+#: Patterns always excluded from indexing (in addition to .gitignore). Uses
+#: gitignore semantics: a bare ``dir/`` matches at any depth, and a later ``!``
+#: negation overrides an earlier pattern. Seeded with the usual dependency/build
+#: directories (adapted from CodeGraph and the ``github/gitignore`` templates) so
+#: the index reflects your code, not vendored deps or build output, even without
+#: a ``.gitignore``. First-party-prone names (``packages``, ``lib``, ``app``,
+#: ``bin``, ``src``, ``deps``, ``tmp``, ``storage``, ``Library``) are deliberately
+#: NOT listed, so real source is never hidden; re-include anything with a ``!`` in
+#: your ``.gitignore`` or in ``exclude``.
 DEFAULT_EXCLUDES = [
+    # VCS / local index metadata
     ".git/",
-    "**/.git/**",
     ".jj/",
-    "**/.jj/**",
-    "node_modules/",
-    "**/node_modules/**",
-    "__pycache__/",
-    "**/__pycache__/**",
-    ".venv/",
-    "**/.venv/**",
-    "venv/",
-    "**/venv/**",
-    "dist/",
-    "**/dist/**",
-    "build/",
-    "**/build/**",
-    "target/",
-    "**/target/**",
+    ".hg/",
+    ".svn/",
     f"{STORE_DIRNAME}/",
     f"{LEGACY_STORE_DIRNAME}/",
     ".codegraph/",
-    "**/.codegraph/**",
+    # JS / TS: dependencies
+    "node_modules/",
+    "bower_components/",
+    "jspm_packages/",
+    "web_modules/",
+    ".yarn/",
+    ".pnpm-store/",
+    # JS / TS: framework & bundler output / cache
+    ".next/",
+    ".nuxt/",
+    ".svelte-kit/",
+    ".turbo/",
+    ".vite/",
+    ".parcel-cache/",
+    ".angular/",
+    ".docusaurus/",
+    "storybook-static/",
+    ".vinxi/",
+    ".nitro/",
+    "out-tsc/",
+    ".vercel/",
+    ".netlify/",
+    ".wrangler/",
+    # Build output (cross-ecosystem)
+    "dist/",
+    "build/",
+    "out/",
+    ".output/",
+    # ``build`` is a legal JVM package segment; keep it under source roots.
+    "!**/src/*/java/**/build/",
+    "!**/src/*/kotlin/**/build/",
+    "!**/src/*/scala/**/build/",
+    # Test / coverage
+    "coverage/",
+    ".nyc_output/",
+    # Python
+    "__pycache__/",
+    "__pypackages__/",
+    ".venv/",
+    "venv/",
+    "env/",
+    ".pixi/",
+    ".pdm-build/",
+    ".mypy_cache/",
+    ".pytest_cache/",
+    ".ruff_cache/",
+    ".tox/",
+    ".nox/",
+    ".hypothesis/",
+    ".ipynb_checkpoints/",
+    ".eggs/",
+    "*.egg-info/",
+    # Rust / JVM
+    "target/",
+    ".gradle/",
+    # .NET
+    "obj/",
+    # Vendored dependencies (Go, PHP/Composer, Ruby/Bundler)
+    "vendor/",
+    # Swift / iOS
+    ".build/",
+    "Pods/",
+    "Carthage/",
+    "DerivedData/",
+    ".swiftpm/",
+    # Dart / Flutter
+    ".dart_tool/",
+    ".pub-cache/",
+    # Native (Android NDK, C/C++ deps)
+    ".cxx/",
+    ".externalNativeBuild/",
+    "vcpkg_installed/",
+    # Scala tooling
+    ".bloop/",
+    ".metals/",
+    # Lua / Luau
+    "lua_modules/",
+    ".luarocks/",
+    # Delphi / RAD Studio IDE backups (duplicate source)
+    "__history/",
+    "__recovery/",
+    # Generic cache / build tools
+    ".cache/",
+    "cmake-build-*/",
+    "bazel-*/",
+    # Lockfiles, minified assets, model weights
     "*.min.js",
     "*.min.css",
     "*.lock",
