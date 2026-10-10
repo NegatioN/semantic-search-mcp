@@ -1,6 +1,6 @@
 ---
 name: zemsearch
-description: Use FIRST when exploring an unfamiliar codebase or looking for something you cannot name — i.e. before running ls/tree on a broad directory, or grepping a guessed keyword. Turns a vague question (where does auth live?, how does signup work?) into candidate files/symbols and, crucially, the codebase's own vocabulary, which you then feed into a normal grep/read. Also use to survey or onboard a repo. Use plain grep/read when you already know a concrete symbol, file, or exact string. Requires the zemsearch MCP tools.
+description: Use FIRST when exploring an unfamiliar codebase or looking for something you cannot name — i.e. before running ls/tree on a broad directory, or grepping a guessed keyword. Turns a vague question (where does auth live?, how does signup work?) into candidate files/symbols and, crucially, the codebase's own vocabulary, which you then feed into a normal grep/read. Phrase the query as a description of expected behavior, never a superlative ("most important", "fastest"). Also use to survey or onboard a repo. Use plain grep/read when you already know a concrete symbol, file, or exact string. Requires the zemsearch MCP tools.
 ---
 
 # zemsearch — semantic code search
@@ -30,14 +30,50 @@ Use plain grep/read directly when:
 - It's a mechanical, well-scoped edit with a known location.
 - You just need a known, small directory's structure — a plain `ls` there is fine.
 
+## Formulating the first query
+
+The first query decides everything. Retrieval matches *meaning*, and in code the
+meaning lives largely in **comments and docstrings**, so a query phrased as a
+description of *what the code does* lands; a query phrased as *how important or
+abstract the code is* does not.
+
+**Rule: rewrite the user's question into the behavior you expect, in verbs.**
+
+Abstract and superlative questions fail because their words are common across the
+whole repo and match nothing in particular — "the most important part", "the
+fastest path", "the core of the system". The same target is usually found
+immediately when you instead describe the mechanism: what the code does, and
+under what conditions.
+
+Translate the initial question before searching:
+
+| Initial question (do **not** query this literally) | Query the behavior instead |
+| --- | --- |
+| "What's the most performance-oriented part?" | "writes results straight to the consumer, skipping extra buffering when the data is already in memory" |
+| "Where is the auth flow?" | "validates the user's credentials and issues a session token" |
+| "How does request handling work?" | "matches an incoming request against patterns to pick a handler" |
+| "What's the main config entry point?" | "loads settings from env vars and files, then applies defaults" |
+
+Guidelines:
+
+- **5–15 words of behavioral prose**, one mechanism per query. If the question
+  spans several concerns, run several queries rather than one broad one.
+- Use **concrete verbs the code would use** (`writes`, `parses`, `retries`,
+  `caches`), not subsystem nouns (`server`, `router`, `pipeline`, `core`). Nouns
+  that name a whole area match everything and drown the signal.
+- **Never start from a superlative** ("fastest", "most critical", "best",
+  "core"). If the user asked one, silently convert it into the behavior that
+  would earn that superlative.
+- The first query needs **no codebase vocabulary** — discovering it is the point.
+
 ## How to answer: candidate generation → lexical search
 
 The highest-value pattern is **semantic search for candidate generation**:
 
-1. **Find candidates and vocabulary.** Run `semantic_search` on the raw question.
-   It matches by *meaning*, so a query sharing none of the code's words still
-   surfaces the relevant files — and, crucially, the **names the codebase
-   actually uses**.
+1. **Find candidates and vocabulary.** Run `semantic_search` on the question
+   rewritten as expected behavior (see *Formulating the first query*). It matches
+   by *meaning*, so a query sharing none of the code's words still surfaces the
+   relevant files — and, crucially, the **names the codebase actually uses**.
 2. **Search again with the discovered terms.** Take the file paths and symbol
    names from the hits and use ordinary grep/read for exact, exhaustive results.
    Semantic search *finds* the vocabulary; lexical search *confirms and expands*.
@@ -102,7 +138,10 @@ index's `granularity`:
   more hits mostly add noise.
 
 If the extra hits are near-duplicates, raise `diversity` (0.3–0.5) rather than
-`k`; if unrelated files creep in, add a `min_score` floor.
+`k`. If unrelated files creep in, prefer **rephrasing the query behaviorally**
+(see above) or narrowing with `path` — a raw `min_score` floor is a weak fix,
+because cosine scores cluster in a narrow band and a floor easily discards good
+hits along with the noise.
 
 ### Choosing `diversity`
 
@@ -115,9 +154,10 @@ approximation of that xQuAD/α-nDCG ideal).
 Calibration: the common library default is *balanced* MMR (LangChain
 `lambda_mult=0.5`), which is ranking-equivalent to about `diversity ≈ 1.0` on our
 scale; a relevance-leaning `λ=0.7` is about `diversity ≈ 0.4`. In practice start
-around **0.3–0.5**: raise it when the top-k is near-duplicates, lower it (or add
-a `min_score` floor) when unrelated files appear. On small or heterogeneous repos
-keep it low.
+around **0.3–0.5**: raise it when the top-k is near-duplicates, lower it when
+unrelated files appear. `diversity` reshapes a result set — it does **not** make
+a badly-phrased query relevant; fix the query text first. On small or
+heterogeneous repos keep it low.
 
 ## More examples
 
@@ -131,6 +171,20 @@ keep it low.
 
 ## Pitfalls
 
+- **Superlative or abstract query** → "the most important part", "the fastest
+  path", "the core of X" return junk (docs, examples, symbols that merely share a
+  common word). Rewrite as a behavioral description before concluding the code
+  isn't there. This is the most common failure mode.
+- **Subsystem nouns** → words like `server`, `router`, `pipeline`, `config`,
+  `path` are everywhere and dominate the ranking. Describe the *action* instead.
+- **Examples, tests, and benchmarks rank high** → for "where is X implemented",
+  sample/benchmark/test files often outrank the real source. Narrow with `path`
+  (e.g. the main source tree) or mentally filter `test`/`example`/`benchmark`
+  paths before trusting a hit.
+- **Empty results on a valid query** → check `granularity`. Only some values are
+  populated for a given index; an unsupported one can silently return **zero**
+  hits rather than an error. Try `granularity="any"` (or omit it) when this
+  happens.
 - **Empty results on a fresh repo** → not initialized; ask the user, then `reindex`.
 - **Stale right after edits** → the watcher reindexes after a short debounce
   (~2s); wait a moment or call `reindex`.
