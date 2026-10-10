@@ -48,9 +48,11 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
 def _cmd_index(args: argparse.Namespace) -> int:
     cfg = _load_config(args)
 
-    def progress(path: str, chunks: int) -> None:
-        if not args.quiet:
-            print(f"  + {path} ({chunks} chunk{'s' if chunks != 1 else ''})")
+    def progress(path: str, chunks: int, done: int, total: int) -> None:
+        if args.quiet:
+            return
+        pct = (done * 100 // total) if total else 100
+        print(f"  [{done:>7,}/{total:,} {pct:>3}%] {path}")
 
     with Runtime(cfg) as runtime:
         report = runtime.index(subpath=args.path, force=args.force, progress=progress)

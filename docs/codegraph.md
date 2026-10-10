@@ -11,13 +11,15 @@ its database is read read-only.
 
 ## What gets embedded
 
-One embedding per symbol node — `function`, `method`, `struct`, `type_alias`,
-`constant` — deduplicated by `(file_path, qualified_name, kind)`. Each node is
-stored as a `granularity="symbol"` chunk whose document is **graph-enriched**:
-the symbol's signature, docstring, its 1-hop neighbourhood (`calls`,
-`called by`, `creates`, `references`) and the source slice. Folding the
-neighbourhood into the embedded text is what lets a vector capture a symbol's
-*role* and not just its body.
+One embedding per node **except** the structural kinds `file` and `import` — a
+*denylist*, so language-specific declarations (`class`, `trait`, `module`,
+`object`, `enum`, …) are picked up automatically instead of being dropped by a
+Go/TS-shaped allowlist. Nodes are deduplicated by
+`(file_path, qualified_name, kind)`. Each is stored as a `granularity="symbol"`
+chunk whose document is **graph-enriched**: the symbol's signature, docstring, its
+1-hop neighbourhood (`calls`, `called by`, `creates`, `references`) and the source
+slice. Folding the neighbourhood into the embedded text is what lets a vector
+capture a symbol's *role* and not just its body.
 
 A real example document:
 

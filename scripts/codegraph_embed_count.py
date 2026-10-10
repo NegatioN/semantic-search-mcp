@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from zemsearch.bench import cpu_summary, run_bench
-from zemsearch.codegraph import SYMBOL_KINDS
+from zemsearch.codegraph import EXCLUDED_KINDS
 
 
 def resolve_db(raw: str) -> Path:
@@ -40,13 +40,13 @@ def resolve_db(raw: str) -> Path:
 def count_embeddings(db_path: Path) -> int:
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
-        placeholders = ",".join("?" * len(SYMBOL_KINDS))
+        placeholders = ",".join("?" * len(EXCLUDED_KINDS))
         row = conn.execute(
             "SELECT COUNT(*) FROM ("
             "  SELECT DISTINCT file_path, qualified_name, kind FROM nodes"
-            f"  WHERE kind IN ({placeholders})"
+            f"  WHERE kind NOT IN ({placeholders})"
             ")",
-            tuple(sorted(SYMBOL_KINDS)),
+            tuple(sorted(EXCLUDED_KINDS)),
         ).fetchone()
         return int(row[0])
     finally:

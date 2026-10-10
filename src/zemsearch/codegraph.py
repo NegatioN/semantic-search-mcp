@@ -2,9 +2,14 @@
 
 The graph (``.codegraph/codegraph.db``) is built by CodeGraph
 (https://github.com/colbymchenry/codegraph) — a local, pre-indexed code knowledge
-graph — and is treated as a **read-only** source. Each symbol node
-(function/method/struct/…) becomes one ``granularity="symbol"`` :class:`Chunk`
-whose text is *graph-enriched*: signature, docstring, 1-hop neighbours
+graph — and is treated as a **read-only** source. Every node is embedded as one
+``granularity="symbol"`` :class:`Chunk` **except** the structural kinds in
+:data:`EXCLUDED_KINDS` (files and imports, which are not code symbols). This is a
+*denylist* so new/less-common declaration kinds (``class``, ``trait``, ``module``,
+``object``, ``enum``, …) are included across languages automatically rather than
+being silently dropped.
+
+Each chunk's text is *graph-enriched*: signature, docstring, 1-hop neighbours
 (calls / called-by / creates / references) and the source slice. Folding the
 neighbourhood into the embedded text is what lets a vector capture a symbol's
 *role*, not just its body — and it means a change to a caller invalidates the
@@ -23,8 +28,9 @@ from pathlib import Path
 
 from .chunking.base import Chunk
 
-#: Node kinds that become embedding units. Files/imports are structural only.
-SYMBOL_KINDS = frozenset({"function", "method", "struct", "type_alias", "constant"})
+#: Structural node kinds that are **not** embedded: a file is not a symbol, and
+#: an import is just a module path. Everything else becomes an embedding unit.
+EXCLUDED_KINDS = frozenset({"file", "import"})
 
 #: SQLite sidecar files (WAL mode) whose mtime/size participate in the
 #: change fingerprint. ``-shm`` is deliberately excluded: it is touched on every
@@ -190,7 +196,7 @@ class CodeGraphReader:
         chunks: list[Chunk] = []
         seen: set[tuple[str, str, str]] = set()
         for node in nodes.values():
-            if node["kind"] not in SYMBOL_KINDS:
+            if node["kind"] in EXCLUDED_KINDS:
                 continue
             key = (str(node["file_path"]), str(node["qualified_name"]), str(node["kind"]))
             if key in seen:

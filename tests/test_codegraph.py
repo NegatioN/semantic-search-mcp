@@ -105,6 +105,21 @@ class TestCodeGraphReader(unittest.TestCase):
         self.assertEqual(chunks["Alpha"].granularity, "symbol")
         self.assertEqual(chunks["Beta"].title, "b.go::Beta")
 
+    def test_embeds_declaration_kinds_but_not_structural(self):
+        _write_db(
+            self.db,
+            [
+                _node("c1", "class", "Foo", "Foo", "a.scala"),
+                _node("m1", "method", "bar", "Foo.bar", "a.scala"),
+                _node("t1", "trait", "Bar", "Bar", "a.scala"),
+                _node("imp", "import", "zio.http", "zio.http", "a.scala"),
+                _node("f1", "file", "a.scala", "a.scala", "a.scala"),
+            ],
+            [],
+        )
+        chunks = {c.symbol for c in self._reader().chunks()}
+        self.assertEqual(chunks, {"Foo", "Foo.bar", "Bar"})
+
     def test_not_ready_when_index_state_incomplete(self):
         _write_db(self.db, _base_nodes(), [], state="indexing")
         self.assertFalse(self._reader().is_ready())
@@ -149,6 +164,15 @@ class TestCodeGraphIndexer(unittest.TestCase):
         report = self.indexer.index()
         self.assertEqual(report.changed, 0)
         self.assertEqual(self.client.batches, [])
+
+    def test_progress_reports_cumulative_counts(self):
+        seen = []
+        self.indexer.index(
+            progress=lambda path, chunks, done, total: seen.append((path, chunks, done, total))
+        )
+        self.assertEqual([s[0] for s in seen], ["a.go", "b.go"])
+        self.assertEqual([s[3] for s in seen], [2, 2])  # total is constant
+        self.assertEqual([s[2] for s in seen], [1, 2])  # done accumulates
 
     def test_changed_symbol_reembeds_only_its_file(self):
         self.indexer.index()

@@ -82,6 +82,12 @@ The resulting binary is
 `~/.local/share/zemsearch/llama.cpp/build/bin/llama-server`. A static build
 (`-DBUILD_SHARED_LIBS=OFF`) is relocatable and has no local `.so` dependencies.
 
+For NVIDIA GPUs, a CUDA build (`-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=<sm>`)
+is worth it for bulk indexing: embedding throughput is many times higher than
+CPU (and rises with batch size), even though per-query latency barely changes —
+see [`reports/embedding-cpu-vs-gpu.md`](reports/embedding-cpu-vs-gpu.md). Point at
+it with `ZEMSEARCH_BINARY`/`--binary` and set `gpu_layers = 99`.
+
 ---
 
 ## Install

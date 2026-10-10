@@ -20,7 +20,8 @@ from ..chunking.base import Chunk
 from ..config import IndexConfig
 from .store import SQLiteStore
 
-ProgressFn = Callable[[str, int], None]
+#: Progress callback: ``(path, chunks_in_file, chunks_done_total, chunks_total)``.
+ProgressFn = Callable[[str, int, int, int], None]
 
 
 @dataclass
@@ -90,7 +91,8 @@ class IncrementalIndexer:
         report = IndexReport()
         plan = self.plan(subpath=subpath, force=force)
         report.errors.extend(plan.errors)
-        self._apply(plan, report, progress)
+        total_chunks = sum(len(update.chunks) for update in plan.updates)
+        self._apply(plan, report, progress, total_chunks)
         report.scanned = plan.scanned
         report.unchanged = (
             max(0, plan.scanned - report.changed) if plan.unchanged is None else plan.unchanged
@@ -103,8 +105,13 @@ class IncrementalIndexer:
         raise NotImplementedError
 
     def _apply(
-        self, plan: IndexPlan, report: IndexReport, progress: ProgressFn | None
+        self,
+        plan: IndexPlan,
+        report: IndexReport,
+        progress: ProgressFn | None,
+        total_chunks: int = 0,
     ) -> None:
+        done_chunks = 0
         for update in plan.updates:
             try:
                 vectors = self.client.embed([c.document() for c in update.chunks])
@@ -122,8 +129,9 @@ class IncrementalIndexer:
             )
             report.changed += 1
             report.chunks += len(update.chunks)
+            done_chunks += len(update.chunks)
             if progress:
-                progress(update.path, len(update.chunks))
+                progress(update.path, len(update.chunks), done_chunks, total_chunks)
         for rel in plan.deletes:
             self.store.delete_file(rel)
             report.deleted += 1
