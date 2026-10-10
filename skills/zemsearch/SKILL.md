@@ -1,6 +1,6 @@
 ---
 name: zemsearch
-description: Use FIRST when a request is broad or vague and how it maps onto this codebase is unclear — for example a flow, a feature, or an area with no obvious name. Semantic search surfaces candidate files and, importantly, the codebase's own vocabulary (an internal name like `UzerFlow`), which you then feed into a normal grep/read. Also use to survey an unfamiliar repo. Use plain grep/read when you already know a concrete symbol, file, or exact string. Requires the zemsearch MCP tools.
+description: Use FIRST when exploring an unfamiliar codebase or looking for something you cannot name — i.e. before running ls/tree on a broad directory, or grepping a guessed keyword. Turns a vague question (where does auth live?, how does signup work?) into candidate files/symbols and, crucially, the codebase's own vocabulary, which you then feed into a normal grep/read. Also use to survey or onboard a repo. Use plain grep/read when you already know a concrete symbol, file, or exact string. Requires the zemsearch MCP tools.
 ---
 
 # zemsearch — semantic code search
@@ -13,6 +13,9 @@ scores are cosine similarity.
 
 Reach for it **first** when:
 
+- **You're about to explore by listing or guessing** — before `ls`/`tree` on a
+  broad directory, or grepping a keyword you're not sure exists. One call finds
+  the right area *and* the real names; browsing directories is slower and noisier.
 - The request is **broad or vague** and its interpretation in this codebase is
   unclear — "how does the user auth flow work?", "where does billing live?",
   "what happens on signup?" — even when none of your words appear in the code.
@@ -25,6 +28,7 @@ Use plain grep/read directly when:
 
 - You already know a concrete symbol, function, file, or exact string.
 - It's a mechanical, well-scoped edit with a known location.
+- You just need a known, small directory's structure — a plain `ls` there is fine.
 
 ## How to answer: candidate generation → lexical search
 
@@ -39,15 +43,15 @@ The highest-value pattern is **semantic search for candidate generation**:
    Semantic search *finds* the vocabulary; lexical search *confirms and expands*.
 3. **Read the code** at the hit (or its grep matches) with `get_context`.
 
-Do not expect word-for-word matches — that is the point. Scope with `path` and
-`k` to keep candidates focused.
+Do not expect word-for-word matches — that is the point. Keep `k` generous on the
+first pass, and use `path` to narrow follow-up searches.
 
 ## Worked example
 
 Asked: *"explain the user authentication flow."*
 
 1. Nothing is literally named "auth".
-2. `semantic_search("user authentication flow", k=8)` →
+2. `semantic_search("user authentication flow", k=20)` →
    hits cluster on an internal component, e.g. `internal/identity/uzerflow.go`
    with symbol `UzerFlow`. **That is the codebase's term.**
 3. `grep "UzerFlow"` for exact matches; `get_context` on the best ones.
@@ -58,7 +62,7 @@ Asked: *"explain the user authentication flow."*
 ```
 index_status                                   # initialized?
 reindex                                        # ONLY if not initialized — ask the user first
-semantic_search("how does the user auth flow work", k=8)   # candidates + real term names
+semantic_search("how does the user auth flow work", k=20)  # candidates + real term names
 grep "<discovered term>"                        # precise search with the codebase's vocabulary
 get_context(path=<best hit>, start_line=..., end_line=...)
 ```
@@ -74,15 +78,31 @@ you never need to re-init.
 ## Tools
 
 - `semantic_search(query, k=10, path?, min_score?, granularity?, diversity?)`
-  Ranked hits: `path`, `start_line`, `end_line`, `score`, `snippet`. Set
-  `diversity` (0–1) to spread results across more distinct files when generating
-  candidates; `0` (default) is plain top-k.
+  Ranked hits: `path`, `start_line`, `end_line`, `score`, `snippet`. Use
+  `granularity="symbol"` to get individual symbols rather than files (pair it with
+  a larger `k` — see below). Set `diversity` (0–1) to spread results across more
+  distinct files when generating candidates; `0` (default) is plain top-k.
 - `get_context(path, start_line=1, end_line?, context_lines=20)`
   Verbatim lines for a range, plus `total_lines`.
 - `reindex(path?, force=false)`
   Build/refresh the index. Reports `scanned`/`changed`/`unchanged`/`deleted`/`chunks`.
 - `index_status()`
   `initialized`, `files`, `chunks`, native/storage/query dims, `last_reindex`.
+
+### Choosing `k` (and granularity)
+
+Be generous with `k`: the relevant code is rarely a single hit, and the extra
+neighbours usually reveal the vocabulary you need. The right size depends on the
+index's `granularity`:
+
+- **Symbol chunks** (`granularity="symbol"`, when the index is built from a
+  CodeGraph symbol graph): use **k = 15–25** (start at **20**). Symbol hits are
+  fine-grained, so a wider window is what actually covers the topic.
+- **Whole-file chunks** (default): **k ≈ 8–12** is plenty; files are coarse, so
+  more hits mostly add noise.
+
+If the extra hits are near-duplicates, raise `diversity` (0.3–0.5) rather than
+`k`; if unrelated files creep in, add a `min_score` floor.
 
 ### Choosing `diversity`
 
@@ -116,9 +136,10 @@ keep it low.
   (~2s); wait a moment or call `reindex`.
 - **Huge repo** → the first index can take minutes; scope with `path` or exclude
   directories via a `zemsearch.toml` at the repo root.
-- **Whole-file chunks (current)** → `start_line`/`end_line` may span a whole file;
-  open hits with `get_context`, and prefer grepping the discovered terms once you
-  have them.
+- **Chunk kinds** → with the default `file` source, `start_line`/`end_line` may
+  span a whole file — open hits with `get_context`. With a `codegraph` source,
+  hits are individual symbols. Either way, prefer grepping the discovered terms
+  once you have them.
 - **Index dir** → `<repo>/.zemsearch/`; add it to the repo's `.gitignore`.
 
 ## Tuning
